@@ -1,0 +1,30 @@
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# Env files with local secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+!**/.env.example
+
+# Backend
+backend/var/
+backend/vendor/
+backend/.env.local
+backend/config/jwt/*.pem
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Workers, local Go binaries
+workers/bin/
+workers/fit-metrics
+workers/fit-structure
+workers/fit-features
+workers/fit-summary
+workers/fit-chat
+

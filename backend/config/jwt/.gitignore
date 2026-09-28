@@ -1,0 +1,3 @@
+# JWT keys are generated locally (see root README) and must not be committed.
+*
+!.gitignore

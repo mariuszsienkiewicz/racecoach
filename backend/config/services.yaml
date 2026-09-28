@@ -1,0 +1,39 @@
+parameters:
+    app.fit_upload_max_bytes: 20971520
+
+services:
+    # default configuration for services in *this* file
+    _defaults:
+        autowire: true      # Automatically injects dependencies in your services.
+        autoconfigure: true # Automatically registers your services as commands, event subscribers, etc.
+
+    # makes classes in src/ available to be used as services
+    # this creates a service per class whose id is the fully-qualified class name
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/DependencyInjection/'
+            - '../src/Entity/'
+            - '../src/Kernel.php'
+
+    App\Service\Fit\FitFileValidator:
+        arguments:
+            $maxBytes: '%app.fit_upload_max_bytes%'
+
+    App\Service\Storage\ObjectStorage:
+        arguments:
+            $endpoint: '%env(S3_ENDPOINT)%'
+            $region: '%env(S3_REGION)%'
+            $accessKey: '%env(S3_ACCESS_KEY)%'
+            $secretKey: '%env(S3_SECRET_KEY)%'
+            $bucket: '%env(S3_BUCKET)%'
+            $usePathStyle: '%env(bool:S3_USE_PATH_STYLE)%'
+
+    App\Security\WorkerTokenAuthenticator:
+        arguments:
+            $workerApiToken: '%env(WORKER_API_TOKEN)%'
+
+    App\Service\Chat\FitChatClient:
+        arguments:
+            $baseUrl: '%env(CHAT_SERVICE_BASE_URL)%'
+            $serviceToken: '%env(CHAT_SERVICE_TOKEN)%'

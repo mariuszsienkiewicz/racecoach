@@ -1,0 +1,34 @@
+framework:
+    messenger:
+        failure_transport: failed
+
+        serializer:
+            default_serializer: messenger.transport.symfony_serializer
+            symfony_serializer:
+                format: json
+
+        transports:
+            # Publish-only for activity events: Go owns queue topology (fit-metrics, …).
+            # Empty queues => Symfony declares the exchange but does not recreate a catch-all "messages" queue.
+            async:
+                dsn: '%env(MESSENGER_TRANSPORT_DSN)%'
+                options:
+                    exchange:
+                        name: messages
+                        type: topic
+                    queues: []
+                retry_strategy:
+                    max_retries: 3
+                    multiplier: 2
+            failed: 'doctrine://default?queue_name=failed'
+
+        default_bus: messenger.bus.default
+
+        buses:
+            messenger.bus.default: []
+
+        routing:
+            Symfony\Component\Mailer\Messenger\SendEmailMessage: async
+            Symfony\Component\Notifier\Message\ChatMessage: async
+            Symfony\Component\Notifier\Message\SmsMessage: async
+            App\Message\ActivityUploadedMessage: async

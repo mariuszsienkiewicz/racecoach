@@ -1,0 +1,16 @@
+# Local build outputs (Compose builds inside Docker)
+bin/
+dist/
+/fit-metrics
+/fit-structure
+/fit-features
+/fit-summary
+/fit-chat
+*.exe
+*.test
+coverage.out
+coverage.html
+
+.idea/
+.vscode/
+.DS_Store
