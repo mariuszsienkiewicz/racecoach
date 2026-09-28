@@ -7,15 +7,23 @@ Upload request
    → validate .fit
    → PutObject to MinIO (bytes)
    → INSERT activity (objectKey + bucket)
-   → RabbitMQ event (references only)
-   → worker downloads by bucket/key
+   → RabbitMQ event on topic exchange `messages` (references only)
+   → Go workers download by bucket/key, write JSON artifacts, PATCH API, publish next key
 ```
+
+Symfony Messenger is **publish-only** for activity events (`queues: []` on the
+`async` transport). Queue topology and consumers live in `workers/` - see
+`workers/README.md`.
 
 ## RabbitMQ
 
 - UI: http://localhost:15672 (`racecoach` / `racecoach`)
-- Event: `App\Message\ActivityUploadedMessage`
-- Consume: `docker compose exec backend php bin/console messenger:consume async -vv`
+- Exchange: `messages` (topic)
+- First event: `App\Message\ActivityUploadedMessage` → routing key `activity.uploaded`
+- Pipeline: `activity.metrics.ready` → `activity.structure.ready` →
+  `activity.features.ready` → `activity.summary.ready`
+- `fit-summary` also declares `fit-summary.retry.30s` (TTL + DLX) and
+  `fit-summary.dlq`
 
 ## MinIO / S3
 
@@ -23,6 +31,8 @@ Upload request
 - Console: http://localhost:9001 (`racecoach` / `racecoachsecret`)
 - Bucket: `racecoach-fits` (created by `minio-init`)
 - Object key shape: `users/{userId}/fits/{YYYY}/{mm}/{random}.fit`
+- Artifacts beside the FIT: `*.metrics.json`, `*.structure.json`,
+  `*.features.json`, `*.summary.json`
 
 Backend env:
 
