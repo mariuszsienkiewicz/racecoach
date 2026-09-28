@@ -5,6 +5,8 @@ namespace App\Entity;
 use App\Repository\ActivityRepository;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
+use Doctrine\Common\Collections\Collection;
+use Doctrine\Common\Collections\ArrayCollection;
 
 #[ORM\Entity(repositoryClass: ActivityRepository::class)]
 #[ORM\Table(name: 'activity')]
@@ -116,10 +118,14 @@ class Activity
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
+    #[ORM\OneToMany(mappedBy: 'activity', targetEntity: ActivityChatMessage::class)]
+    private Collection $chatMessages;
+
     public function __construct()
     {
         $this->startedAt = new \DateTimeImmutable();
         $this->createdAt = new \DateTimeImmutable();
+        $this->chatMessages = new ArrayCollection();
     }
 
     public function getId(): ?int
@@ -394,6 +400,19 @@ class Activity
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
+    }
+
+    public function getChatMessages(): Collection
+    {
+        return $this->chatMessages;
+    }
+
+    public function addChatMessage(ActivityChatMessage $chatMessage): static
+    {
+        $chatMessage->setActivity($this);
+        $this->chatMessages->add($chatMessage);
+
+        return $this;
     }
 
     /**
