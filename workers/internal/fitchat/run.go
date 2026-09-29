@@ -16,17 +16,24 @@ import (
 )
 
 const maxChatMessageLen = 2000
+const maxHistoryLen = 12
 
 // chatRequest is the private Symfony → fit-chat contract.
 // Artifact keys come from the gateway so we never call Symfony back mid-request.
 type chatRequest struct {
-	ActivityID        int    `json:"activityId"`
-	UserID            int    `json:"userId"`
-	Message           string `json:"message"`
-	StorageBucket     string `json:"storageBucket"`
-	FeaturesObjectKey string `json:"featuresObjectKey"`
-	SummaryObjectKey  string `json:"summaryObjectKey,omitempty"`
-	Summary           string `json:"summary,omitempty"`
+	ActivityID        int           `json:"activityId"`
+	UserID            int           `json:"userId"`
+	Message           string        `json:"message"`
+	StorageBucket     string        `json:"storageBucket"`
+	FeaturesObjectKey string        `json:"featuresObjectKey"`
+	SummaryObjectKey  string        `json:"summaryObjectKey,omitempty"`
+	Summary           string        `json:"summary,omitempty"`
+	History           []historyTurn `json:"history,omitempty"`
+}
+
+type historyTurn struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 type chatResponse struct {
@@ -41,10 +48,7 @@ func handleChat(ctx context.Context, w http.ResponseWriter, r *http.Request, sto
 		return nil
 	}
 
-	request.Message = strings.TrimSpace(request.Message)
-	request.StorageBucket = strings.TrimSpace(request.StorageBucket)
-	request.FeaturesObjectKey = strings.TrimSpace(request.FeaturesObjectKey)
-	request.Summary = strings.TrimSpace(request.Summary)
+	normalizeChatRequest(&request)
 
 	if err := validateChatRequest(request); err != nil {
 		log.Printf("invalid chat request: %v", err)
@@ -77,18 +81,12 @@ func handleChat(ctx context.Context, w http.ResponseWriter, r *http.Request, sto
 		summaryBlock = request.Summary
 	}
 
-	userPrompt := "Answer the athlete using ONLY the context below.\n\n" +
-		"## Existing session summary (may be empty)\n" +
-		summaryBlock + "\n\n" +
-		"## Features JSON (coach-safe view)\n" +
-		string(featuresJSON) + "\n\n" +
-		"## Athlete question\n" +
-		request.Message + "\n\n" +
-		"Reply as RaceCoach in plain text."
+	sessionContext := buildSessionContext(summaryBlock, string(featuresJSON))
+	messages := buildChatMessages(systemPrompt, sessionContext, request.History, request.Message)
 
 	log.Printf("generating chat reply for activity=%d", request.ActivityID)
 
-	raw, err := llmClient.CompletionRaw(ctx, llmClient.NewTextCompletionRequest(systemPrompt, userPrompt))
+	raw, err := llmClient.CompletionRaw(ctx, llmClient.NewChatCompletionRequest(messages))
 	if err != nil {
 		return fmt.Errorf("chat completion: %w", err)
 	}
@@ -102,6 +100,17 @@ func handleChat(ctx context.Context, w http.ResponseWriter, r *http.Request, sto
 	return writeJSON(w, http.StatusOK, chatResponse{
 		Reply: reply,
 	})
+}
+
+func normalizeChatRequest(request *chatRequest) {
+	request.Message = strings.TrimSpace(request.Message)
+	request.StorageBucket = strings.TrimSpace(request.StorageBucket)
+	request.FeaturesObjectKey = strings.TrimSpace(request.FeaturesObjectKey)
+	request.Summary = strings.TrimSpace(request.Summary)
+	for i := range request.History {
+		request.History[i].Role = strings.ToLower(strings.TrimSpace(request.History[i].Role))
+		request.History[i].Content = strings.TrimSpace(request.History[i].Content)
+	}
 }
 
 func validateChatRequest(request chatRequest) error {
@@ -123,7 +132,51 @@ func validateChatRequest(request chatRequest) error {
 	if request.FeaturesObjectKey == "" {
 		return fmt.Errorf("featuresObjectKey is required")
 	}
+	if len(request.History) > maxHistoryLen {
+		return fmt.Errorf("history is too long (max %d messages)", maxHistoryLen)
+	}
+	for _, turn := range request.History {
+		if turn.Role == "" {
+			return fmt.Errorf("history role is required")
+		}
+		if turn.Role != "athlete" && turn.Role != "coach" {
+			return fmt.Errorf("history role must be either athlete or coach")
+		}
+		if turn.Content == "" {
+			return fmt.Errorf("history content is required")
+		}
+		if utf8.RuneCountInString(turn.Content) > maxChatMessageLen {
+			return fmt.Errorf("history content is too long (max %d characters)", maxChatMessageLen)
+		}
+	}
 	return nil
+}
+
+func buildSessionContext(summary string, featuresJSON string) string {
+	return "Session context for this activity (facts only; do not invent beyond this).\n\n" +
+		"## Existing session summary\n" +
+		summary + "\n\n" +
+		"## Features JSON (coach-safe view)\n" +
+		featuresJSON
+}
+
+func buildChatMessages(systemPrompt string, sessionContext string, history []historyTurn, question string) []llm.Message {
+	messages := []llm.Message{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: sessionContext},
+	}
+	for _, turn := range history {
+		messages = append(messages, llm.Message{Role: llmRole(turn.Role), Content: turn.Content})
+	}
+	messages = append(messages, llm.Message{Role: "user", Content: question})
+	return messages
+}
+
+func llmRole(role string) string {
+	if role == "coach" {
+		return "assistant"
+	}
+	return "user"
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) error {
