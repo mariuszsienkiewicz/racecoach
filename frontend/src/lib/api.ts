@@ -1,4 +1,4 @@
-import type { Activity } from '@/types/dashboard'
+import type { Activity, ChatMessage } from '@/types/dashboard'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
 
@@ -16,6 +16,24 @@ type ActivitiesResponse = {
   activities: Activity[]
 }
 
+type ActivityChatMessageDto = {
+  id?: unknown
+  role?: unknown
+  content?: unknown
+  createdAt?: unknown
+}
+
+type ActivityChatListResponse = {
+  activityId?: unknown
+  messages?: unknown
+}
+
+export type ActivityChatResponse = {
+  reply: string
+  activityId: string
+  messages: ChatMessage[]
+}
+
 async function readErrorMessage(response: Response, fallback: string): Promise<string> {
   try {
     const payload = (await response.json()) as { message?: string; detail?: string; error?: string }
@@ -23,6 +41,39 @@ async function readErrorMessage(response: Response, fallback: string): Promise<s
   } catch {
     return fallback
   }
+}
+
+function mapChatMessage(raw: unknown): ChatMessage | null {
+  if (!raw || typeof raw !== 'object') {
+    return null
+  }
+  const dto = raw as ActivityChatMessageDto
+  if (typeof dto.id !== 'string' && typeof dto.id !== 'number') {
+    return null
+  }
+  if (dto.role !== 'athlete' && dto.role !== 'coach') {
+    return null
+  }
+  if (typeof dto.content !== 'string' || dto.content.trim() === '') {
+    return null
+  }
+  if (typeof dto.createdAt !== 'string' || dto.createdAt.trim() === '') {
+    return null
+  }
+
+  return {
+    id: String(dto.id),
+    role: dto.role,
+    content: dto.content,
+    createdAt: dto.createdAt,
+  }
+}
+
+function mapChatMessages(raw: unknown): ChatMessage[] {
+  if (!Array.isArray(raw)) {
+    return []
+  }
+  return raw.map(mapChatMessage).filter((message): message is ChatMessage => message !== null)
 }
 
 export async function login(email: string, password: string): Promise<string> {
@@ -96,9 +147,28 @@ export async function uploadFitFile(token: string, file: File): Promise<Activity
   return (await response.json()) as Activity
 }
 
-export type ActivityChatResponse = {
-  reply: string
-  activityId: number
+export async function fetchActivityChat(
+  token: string,
+  activityId: string | number,
+): Promise<ChatMessage[]> {
+  const response = await fetch(`${API_BASE}/api/activities/${activityId}/chat`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/json',
+    },
+  })
+
+  if (response.status === 401) {
+    throw new Error('Your session expired. Please sign in again.')
+  }
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Could not load the coach conversation.'))
+  }
+
+  const data = (await response.json()) as ActivityChatListResponse
+  return mapChatMessages(data.messages)
 }
 
 export async function postActivityChat(
@@ -124,10 +194,25 @@ export async function postActivityChat(
     throw new Error(await readErrorMessage(response, 'Could not reach the AI coach.'))
   }
 
-  const data = (await response.json()) as ActivityChatResponse
-  if (typeof data.reply !== 'string' || data.reply.trim() === '') {
+  const data = (await response.json()) as {
+    reply?: unknown
+    activityId?: unknown
+    messages?: unknown
+  }
+
+  const reply = typeof data.reply === 'string' ? data.reply.trim() : ''
+  if (reply === '') {
     throw new Error('AI coach returned an empty reply.')
   }
 
-  return data
+  const messages = mapChatMessages(data.messages)
+  if (messages.length < 2) {
+    throw new Error('AI coach returned an incomplete conversation turn.')
+  }
+
+  return {
+    reply,
+    activityId: data.activityId != null ? String(data.activityId) : String(activityId),
+    messages,
+  }
 }

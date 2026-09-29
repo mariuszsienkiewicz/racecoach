@@ -1,5 +1,10 @@
 import { mockDevices, mockPlanDays } from '@/data/mock/dashboard'
-import { fetchActivities, postActivityChat, uploadFitFile as uploadFitFileApi } from '@/lib/api'
+import {
+  fetchActivities,
+  fetchActivityChat,
+  postActivityChat,
+  uploadFitFile as uploadFitFileApi,
+} from '@/lib/api'
 import { buildWeekSummary } from '@/lib/week-summary'
 import type {
   Activity,
@@ -24,18 +29,20 @@ export async function getDashboardData(token: string): Promise<DashboardData> {
   }
 }
 
-/** Chat is stateless on the backend for now - threads live only in the browser session. */
-export async function getActivityCoachThread(_activityId: string): Promise<ChatMessage[]> {
-  return []
+export async function getActivityCoachThread(
+  token: string,
+  activityId: string,
+): Promise<ChatMessage[]> {
+  return fetchActivityChat(token, activityId)
 }
 
 export async function askCoach(
   token: string,
   activityId: string,
   content: string,
-): Promise<string> {
-  const { reply } = await postActivityChat(token, activityId, content)
-  return reply
+): Promise<ChatMessage[]> {
+  const { messages } = await postActivityChat(token, activityId, content)
+  return messages
 }
 
 export async function uploadFitFile(token: string, file: File): Promise<Activity> {

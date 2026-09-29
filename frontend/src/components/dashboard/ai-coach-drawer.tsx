@@ -192,7 +192,7 @@ export function AiCoachDrawer({ activity, onClose }: AiCoachDrawerProps) {
             </p>
           ) : (
             <p className="mt-2 text-xs text-muted-foreground">
-              Grounded in this session&apos;s features and summary. Kept in this panel only.
+              Grounded in this session&apos;s features and summary. Saved for this activity.
             </p>
           )}
         </form>

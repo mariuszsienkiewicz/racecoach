@@ -80,6 +80,15 @@ func (c *Client) NewTextCompletionRequest(systemPrompt string, userPrompt string
 	}
 }
 
+func (c *Client) NewChatCompletionRequest(messages []Message) CompletionRequest {
+	return CompletionRequest{
+		Model:       c.model,
+		Messages:    messages,
+		Stream:      false,
+		Temperature: 0.4,
+	}
+}
+
 func (c *Client) Completion(ctx context.Context, request CompletionRequest) (string, error) {
 	content, err := c.CompletionRaw(ctx, request)
 	if err != nil {

@@ -62,6 +62,9 @@ final class FitChatClient
             'storageBucket' => $request->storageBucket,
             'featuresObjectKey' => $request->featuresObjectKey,
         ];
+        if ($request->history !== null) {
+            $json['history'] = $request->history;
+        }
         if ($request->summaryObjectKey !== null && $request->summaryObjectKey !== '') {
             $json['summaryObjectKey'] = $request->summaryObjectKey;
         }

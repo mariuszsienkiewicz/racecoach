@@ -3,14 +3,14 @@
 namespace App\Controller;
 
 use App\Entity\Activity;
+use App\Entity\ActivityChatMessage;
 use App\Entity\User;
 use App\Exception\Chat\FitChatProtocolException;
 use App\Exception\Chat\FitChatRejectedException;
 use App\Exception\Chat\FitChatUnavailableException;
+use App\Exception\Chat\InvalidChatMessageException;
 use App\Repository\ActivityRepository;
-use App\Service\Chat\FitChatAskRequest;
-use App\Service\Chat\FitChatClient;
-use App\Service\Storage\ObjectStorage;
+use App\Service\Chat\ActivityChatService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
@@ -19,23 +19,51 @@ use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
-/**
- * Public chat gateway: JWT + ownership, then delegate inference to fit-chat.
- */
 final class ActivityChatController extends AbstractController
 {
     private const MAX_MESSAGE_LENGTH = 2000;
 
     public function __construct(
-        private readonly FitChatClient $fitChatClient,
-        private readonly ObjectStorage $objectStorage,
+        private readonly ActivityChatService $activityChatService,
+        private readonly ActivityRepository $activityRepository,
     ) {
     }
 
     #[IsGranted('ROLE_USER')]
     #[Route(
         '/api/activities/{id}/chat',
-        name: 'api_activities_chat',
+        name: 'api_activities_chat_get',
+        methods: ['GET'],
+        requirements: ['id' => '\d+'],
+    )]
+    public function list(
+        int $id,
+        #[CurrentUser] ?User $user,
+    ): JsonResponse {
+        if (!$user instanceof User) {
+            return $this->json(['message' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
+        }
+
+        $activity = $this->findOwnedActivity($id, $user);
+        if ($activity === null) {
+            return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $messages = array_map(
+            static fn (ActivityChatMessage $message) => $message->toApiArray(),
+            $this->activityChatService->list($activity),
+        );
+
+        return $this->json([
+            'activityId' => $activity->getId(),
+            'messages' => $messages,
+        ]);
+    }
+
+    #[IsGranted('ROLE_USER')]
+    #[Route(
+        '/api/activities/{id}/chat',
+        name: 'api_activities_chat_post',
         methods: ['POST'],
         requirements: ['id' => '\d+'],
     )]
@@ -43,15 +71,13 @@ final class ActivityChatController extends AbstractController
         int $id,
         Request $request,
         #[CurrentUser] ?User $user,
-        ActivityRepository $activityRepository,
     ): JsonResponse {
         if (!$user instanceof User) {
             return $this->json(['message' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
         }
 
-        $activity = $activityRepository->find($id);
-        // Missing and foreign look the same - do not leak activity existence.
-        if (!$activity instanceof Activity || $activity->getUser()?->getId() !== $user->getId()) {
+        $activity = $this->findOwnedActivity($id, $user);
+        if ($activity === null) {
             return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
         }
 
@@ -70,21 +96,11 @@ final class ActivityChatController extends AbstractController
             );
         }
 
-        $message = $this->parseMessage($request);
-        if ($message instanceof JsonResponse) {
-            return $message;
-        }
-
         try {
-            $reply = $this->fitChatClient->ask(new FitChatAskRequest(
-                userId: (int) $user->getId(),
-                activityId: (int) $activity->getId(),
-                message: $message,
-                storageBucket: $this->objectStorage->getBucket(),
-                featuresObjectKey: $featuresObjectKey,
-                summaryObjectKey: $activity->getSummaryObjectKey(),
-                summary: $activity->getSummary(),
-            ));
+            $message = $this->parseMessage($request);
+            $result = $this->activityChatService->ask($activity, $message);
+        } catch (InvalidChatMessageException $exception) {
+            return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_REQUEST);
         } catch (FitChatUnavailableException) {
             return $this->json(['message' => 'AI coach unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
         } catch (FitChatRejectedException $exception) {
@@ -94,35 +110,48 @@ final class ActivityChatController extends AbstractController
         }
 
         return $this->json([
-            'reply' => $reply->text,
+            'reply' => $result->reply,
             'activityId' => $activity->getId(),
+            'messages' => [
+                $result->athleteMessage->toApiArray(),
+                $result->coachMessage->toApiArray(),
+            ],
         ]);
     }
 
+    private function findOwnedActivity(int $id, User $user): ?Activity
+    {
+        $activity = $this->activityRepository->find($id);
+        if (!$activity instanceof Activity || $activity->getUser()?->getId() !== $user->getId()) {
+            return null;
+        }
+
+        return $activity;
+    }
+
     /**
-     * @return string|JsonResponse validated message, or a 400 response
+     * @throws InvalidChatMessageException when the JSON body is missing or invalid
      */
-    private function parseMessage(Request $request): string|JsonResponse
+    private function parseMessage(Request $request): string
     {
         $payload = json_decode($request->getContent(), true);
         if (!\is_array($payload)) {
-            return $this->json(['message' => 'Invalid JSON'], Response::HTTP_BAD_REQUEST);
+            throw new InvalidChatMessageException('Invalid JSON');
         }
 
         $raw = $payload['message'] ?? null;
         if (!\is_string($raw)) {
-            return $this->json(['message' => 'message is required'], Response::HTTP_BAD_REQUEST);
+            throw new InvalidChatMessageException('message is required');
         }
 
         $message = trim($raw);
         if ($message === '') {
-            return $this->json(['message' => 'message is required'], Response::HTTP_BAD_REQUEST);
+            throw new InvalidChatMessageException('message is required');
         }
 
         if (mb_strlen($message) > self::MAX_MESSAGE_LENGTH) {
-            return $this->json(
-                ['message' => sprintf('message is too long (max %d characters)', self::MAX_MESSAGE_LENGTH)],
-                Response::HTTP_BAD_REQUEST,
+            throw new InvalidChatMessageException(
+                sprintf('message is too long (max %d characters)', self::MAX_MESSAGE_LENGTH),
             );
         }
 

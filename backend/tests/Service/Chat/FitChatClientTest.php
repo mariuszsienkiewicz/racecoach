@@ -110,6 +110,10 @@ final class FitChatClientTest extends TestCase
                 'message' => 'Tell me more',
                 'storageBucket' => 'racecoach-fits',
                 'featuresObjectKey' => 'users/7/a.features.json',
+                'history' => [
+                    ['role' => 'athlete', 'content' => 'Earlier question'],
+                    ['role' => 'coach', 'content' => 'Earlier answer'],
+                ],
                 'summaryObjectKey' => 'users/7/a.summary.json',
                 'summary' => 'Headline note',
             ], $body);
@@ -126,6 +130,23 @@ final class FitChatClientTest extends TestCase
             featuresObjectKey: 'users/7/a.features.json',
             summaryObjectKey: 'users/7/a.summary.json',
             summary: 'Headline note',
+            history: [
+                ['role' => 'athlete', 'content' => 'Earlier question'],
+                ['role' => 'coach', 'content' => 'Earlier answer'],
+            ],
         ));
+    }
+
+    public function testAskOmitsHistoryWhenNull(): void
+    {
+        $http = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
+            $body = json_decode($options['body'], true, 512, JSON_THROW_ON_ERROR);
+            self::assertArrayNotHasKey('history', $body);
+
+            return new MockResponse(json_encode(['reply' => 'ok'], JSON_THROW_ON_ERROR));
+        });
+
+        $client = new FitChatClient($http, 'http://fit-chat:8081/', 'secret', new NullLogger());
+        $client->ask($this->sampleAsk());
     }
 }

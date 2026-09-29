@@ -165,21 +165,37 @@ export function useActivityCoach(activityId: string | null) {
       return
     }
 
+    if (!token) {
+      setMessages([])
+      setError('Your session expired. Please sign in again.')
+      setLoading(false)
+      return
+    }
+
     let cancelled = false
     setLoading(true)
     setError(null)
 
-    void dashboardService.getActivityCoachThread(activityId).then((thread) => {
-      if (!cancelled) {
-        setMessages(thread)
-        setLoading(false)
-      }
-    })
+    void dashboardService
+      .getActivityCoachThread(token, activityId)
+      .then((thread) => {
+        if (!cancelled) {
+          setMessages(thread)
+          setLoading(false)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setMessages([])
+          setError(err instanceof Error ? err.message : 'Could not load the coach conversation.')
+          setLoading(false)
+        }
+      })
 
     return () => {
       cancelled = true
     }
-  }, [activityId])
+  }, [activityId, token])
 
   const sendMessage = useCallback(
     async (content: string) => {
@@ -192,8 +208,9 @@ export function useActivityCoach(activityId: string | null) {
         return
       }
 
+      const optimisticId = `local_athlete_${Date.now()}`
       const athleteMessage: ChatMessage = {
-        id: `local_athlete_${Date.now()}`,
+        id: optimisticId,
         role: 'athlete',
         content: trimmed,
         createdAt: new Date().toISOString(),
@@ -204,15 +221,13 @@ export function useActivityCoach(activityId: string | null) {
       setMessages((prev) => [...prev, athleteMessage])
 
       try {
-        const reply = await dashboardService.askCoach(token, activityId, trimmed)
-        const coachMessage: ChatMessage = {
-          id: `local_coach_${Date.now()}`,
-          role: 'coach',
-          content: reply,
-          createdAt: new Date().toISOString(),
-        }
-        setMessages((prev) => [...prev, coachMessage])
+        const turn = await dashboardService.askCoach(token, activityId, trimmed)
+        setMessages((prev) => {
+          const withoutOptimistic = prev.filter((message) => message.id !== optimisticId)
+          return [...withoutOptimistic, ...turn]
+        })
       } catch (err) {
+        // Athlete turn is already persisted server-side; keep it visible and surface the error.
         setError(err instanceof Error ? err.message : 'Could not reach the AI coach.')
       } finally {
         setSending(false)
