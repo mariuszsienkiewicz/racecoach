@@ -15,6 +15,8 @@ final readonly class FitChatAskRequest
         public string $featuresObjectKey,
         public ?string $summaryObjectKey = null,
         public ?string $summary = null,
+        /** @var list<array{role: string, content: string}>|null */
+        public ?array $history = null,
     ) {
     }
 }
