@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"strings"
 	"testing"
 )
 
@@ -50,5 +51,67 @@ func TestExtractJSONObjectFromFence(t *testing.T) {
 	got := ExtractJSONObject(in)
 	if got != `{"headline":"A","summary":"B"}` {
 		t.Fatalf("got=%q", got)
+	}
+}
+
+func TestConsumeCompletionStream(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Join([]string{
+		`data: {"choices":[{"delta":{"role":"assistant"}}]}`,
+		``,
+		`data: {"choices":[{"delta":{"content":"Hel"}}]}`,
+		`data: {"choices":[{"delta":{"content":"lo"}}]}`,
+		`data:{"choices":[{"delta":{"content":"!"}}]}`,
+		`data: [DONE]`,
+		``,
+	}, "\n")
+
+	var deltas []string
+	got, err := consumeCompletionStream(strings.NewReader(body), func(delta string) error {
+		deltas = append(deltas, delta)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != "Hello!" {
+		t.Fatalf("full=%q want %q", got, "Hello!")
+	}
+	if strings.Join(deltas, "") != "Hello!" || len(deltas) != 3 {
+		t.Fatalf("deltas=%v want [Hel lo !]", deltas)
+	}
+}
+
+func TestConsumeCompletionStreamStopsOnDeltaError(t *testing.T) {
+	t.Parallel()
+
+	body := strings.Join([]string{
+		`data: {"choices":[{"delta":{"content":"A"}}]}`,
+		`data: {"choices":[{"delta":{"content":"B"}}]}`,
+		`data: [DONE]`,
+	}, "\n")
+
+	stop := errors.New("stop")
+	got, err := consumeCompletionStream(strings.NewReader(body), func(delta string) error {
+		if delta == "B" {
+			return stop
+		}
+		return nil
+	})
+	if !errors.Is(err, stop) {
+		t.Fatalf("err=%v want stop", err)
+	}
+	if got != "AB" {
+		t.Fatalf("full=%q want AB (partial before callback error)", got)
+	}
+}
+
+func TestConsumeCompletionStreamInvalidJSON(t *testing.T) {
+	t.Parallel()
+
+	_, err := consumeCompletionStream(strings.NewReader("data: {not-json}\n"), nil)
+	if err == nil {
+		t.Fatal("expected unmarshal error")
 	}
 }
