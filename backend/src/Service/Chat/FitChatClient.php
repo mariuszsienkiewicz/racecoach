@@ -48,10 +48,10 @@ final class FitChatClient
         }
 
         $message = trim($request->message);
-        if ($message === '') {
+        if ('' === $message) {
             throw new \InvalidArgumentException('message must not be empty.');
         }
-        if (trim($request->storageBucket) === '' || trim($request->featuresObjectKey) === '') {
+        if ('' === trim($request->storageBucket) || '' === trim($request->featuresObjectKey)) {
             throw new \InvalidArgumentException('storageBucket and featuresObjectKey are required.');
         }
 
@@ -102,13 +102,13 @@ final class FitChatClient
             'storageBucket' => $request->storageBucket,
             'featuresObjectKey' => $request->featuresObjectKey,
         ];
-        if ($request->history !== null) {
+        if (null !== $request->history) {
             $json['history'] = $request->history;
         }
-        if ($request->summaryObjectKey !== null && $request->summaryObjectKey !== '') {
+        if (null !== $request->summaryObjectKey && '' !== $request->summaryObjectKey) {
             $json['summaryObjectKey'] = $request->summaryObjectKey;
         }
-        if ($request->summary !== null && trim($request->summary) !== '') {
+        if (null !== $request->summary && '' !== trim($request->summary)) {
             $json['summary'] = $request->summary;
         }
 
@@ -137,8 +137,8 @@ final class FitChatClient
                 $buffer = substr($buffer, $pos + 1);
                 $line = rtrim($line, "\r");
 
-                if ($line === '') {
-                    if ($eventName === null && $dataLines === []) {
+                if ('' === $line) {
+                    if (null === $eventName && [] === $dataLines) {
                         continue;
                     }
 
@@ -164,7 +164,7 @@ final class FitChatClient
             }
         }
 
-        if ($eventName !== null || $dataLines !== []) {
+        if (null !== $eventName || [] !== $dataLines) {
             $reply = $this->handleSseEvent(
                 $eventName ?? 'message',
                 implode("\n", $dataLines),
@@ -174,7 +174,7 @@ final class FitChatClient
             );
         }
 
-        if ($reply === null || trim($reply) === '') {
+        if (null === $reply || '' === trim($reply)) {
             $this->logger->warning('fit-chat stream ended without done/reply', [
                 'activityId' => $activityId,
             ]);
@@ -209,13 +209,13 @@ final class FitChatClient
     }
 
     /**
-     * @param array<string, mixed> $payload
+     * @param array<string, mixed>  $payload
      * @param callable(string):void $onToken
      */
     private function handleTokenEvent(array $payload, callable $onToken, ?string $reply): ?string
     {
         $text = $payload['text'] ?? null;
-        if (!\is_string($text) || $text === '') {
+        if (!\is_string($text) || '' === $text) {
             return $reply;
         }
         $onToken($text);
@@ -229,7 +229,7 @@ final class FitChatClient
     private function handleDoneEvent(array $payload, int $activityId): string
     {
         $reply = $payload['reply'] ?? null;
-        if (!\is_string($reply) || trim($reply) === '') {
+        if (!\is_string($reply) || '' === trim($reply)) {
             $this->logger->warning('fit-chat done event missing reply', [
                 'activityId' => $activityId,
             ]);
@@ -246,7 +246,7 @@ final class FitChatClient
     private function exceptionFromErrorEvent(array $payload, int $activityId): FitChatException
     {
         $message = $payload['message'] ?? null;
-        $detail = \is_string($message) && trim($message) !== ''
+        $detail = \is_string($message) && '' !== trim($message)
             ? trim($message)
             : 'Chat request failed in fit-chat.';
 
@@ -307,7 +307,7 @@ final class FitChatClient
     {
         foreach (['message', 'error'] as $key) {
             $value = $payload[$key] ?? null;
-            if (\is_string($value) && trim($value) !== '') {
+            if (\is_string($value) && '' !== trim($value)) {
                 return trim($value);
             }
         }

@@ -167,7 +167,7 @@ final class ActivityMetricsController extends AbstractController
             }
         }
 
-        if (!\is_string($payload['summaryObjectKey']) || $payload['summaryObjectKey'] === '') {
+        if (!\is_string($payload['summaryObjectKey']) || '' === $payload['summaryObjectKey']) {
             return $this->json(['message' => 'Invalid summaryObjectKey'], Response::HTTP_BAD_REQUEST);
         }
         if (!\is_string($payload['summary'])) {

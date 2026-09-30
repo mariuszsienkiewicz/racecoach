@@ -21,10 +21,7 @@ final class FitFileValidator
     public function validate(UploadedFile $file): void
     {
         if (!$file->isValid()) {
-            throw new BadRequestHttpException(sprintf(
-                'Upload failed: %s',
-                $file->getErrorMessage() ?: 'unknown error',
-            ));
+            throw new BadRequestHttpException(sprintf('Upload failed: %s', $file->getErrorMessage() ?: 'unknown error'));
         }
 
         $originalName = $file->getClientOriginalName();
@@ -34,25 +31,22 @@ final class FitFileValidator
 
         // Reject double extensions like activity.php.fit
         $basename = pathinfo($originalName, PATHINFO_FILENAME);
-        if ($basename === '' || preg_match('/[\\\\\\/\\x00]/', $basename) === 1) {
+        if ('' === $basename || 1 === preg_match('/[\\\\\\/\\x00]/', $basename)) {
             throw new BadRequestHttpException('Invalid .fit filename.');
         }
 
         $size = $file->getSize();
-        if ($size === false || $size <= 0) {
+        if (false === $size || $size <= 0) {
             throw new BadRequestHttpException('The uploaded .fit file is empty.');
         }
 
         if ($size > $this->maxBytes) {
-            throw new BadRequestHttpException(sprintf(
-                'The .fit file exceeds the maximum size of %d bytes.',
-                $this->maxBytes,
-            ));
+            throw new BadRequestHttpException(sprintf('The .fit file exceeds the maximum size of %d bytes.', $this->maxBytes));
         }
 
         $pathname = $file->getPathname();
         $handle = fopen($pathname, 'rb');
-        if ($handle === false) {
+        if (false === $handle) {
             throw new BadRequestHttpException('Unable to read the uploaded .fit file.');
         }
 
@@ -62,7 +56,7 @@ final class FitFileValidator
             fclose($handle);
         }
 
-        if ($header === false || strlen($header) < self::MIN_HEADER_BYTES) {
+        if (false === $header || strlen($header) < self::MIN_HEADER_BYTES) {
             throw new BadRequestHttpException('The uploaded file is too small to be a valid .fit activity.');
         }
 
@@ -72,7 +66,7 @@ final class FitFileValidator
         }
 
         $signature = substr($header, 8, 4);
-        if ($signature !== self::FIT_SIGNATURE) {
+        if (self::FIT_SIGNATURE !== $signature) {
             throw new BadRequestHttpException('The uploaded file is not a valid .fit activity (missing .FIT signature).');
         }
     }

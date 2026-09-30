@@ -68,6 +68,15 @@ jobs:
       - name: Install dependencies
         run: composer install --prefer-dist --no-interaction --no-progress
 
+      - name: PHP CS Fixer
+        run: composer cs-check
+
+      - name: Warm cache for PHPStan
+        run: php bin/console cache:warmup --env=dev --no-interaction
+
+      - name: PHPStan
+        run: composer phpstan
+
       - name: PHPUnit
         run: ./bin/phpunit
 

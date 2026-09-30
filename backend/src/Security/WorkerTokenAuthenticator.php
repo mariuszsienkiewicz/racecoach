@@ -25,17 +25,17 @@ final class WorkerTokenAuthenticator extends AbstractAuthenticator
     ) {
     }
 
-    public function supports(Request $request): ?bool
+    public function supports(Request $request): bool
     {
         $token = $request->headers->get('X-Worker-Token');
 
-        return $token !== null && $token !== '';
+        return null !== $token && '' !== $token;
     }
 
     public function authenticate(Request $request): Passport
     {
         $provided = $request->headers->get('X-Worker-Token');
-        if ($provided === null || $provided === '' || !hash_equals($this->workerApiToken, $provided)) {
+        if (null === $provided || '' === $provided || !hash_equals($this->workerApiToken, $provided)) {
             throw new CustomUserMessageAuthenticationException('Invalid worker token.');
         }
 
@@ -52,7 +52,7 @@ final class WorkerTokenAuthenticator extends AbstractAuthenticator
         return null;
     }
 
-    public function onAuthenticationFailure(Request $request, AuthenticationException $exception): ?Response
+    public function onAuthenticationFailure(Request $request, AuthenticationException $exception): Response
     {
         return new JsonResponse(['message' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
     }

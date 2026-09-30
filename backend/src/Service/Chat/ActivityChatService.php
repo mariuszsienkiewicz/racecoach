@@ -39,10 +39,10 @@ final class ActivityChatService
         $user = $activity->getUser();
         $activityId = $activity->getId();
         $featuresObjectKey = $activity->getFeaturesObjectKey();
-        if ($user === null || $activityId === null) {
+        if (null === $activityId) {
             throw new \InvalidArgumentException('Activity must be persisted and owned.');
         }
-        if ($featuresObjectKey === null || $featuresObjectKey === '') {
+        if (null === $featuresObjectKey || '' === $featuresObjectKey) {
             throw new \InvalidArgumentException('Activity featuresObjectKey is required for chat.');
         }
 

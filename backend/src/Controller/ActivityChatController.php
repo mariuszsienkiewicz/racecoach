@@ -46,7 +46,7 @@ final class ActivityChatController extends AbstractController
         }
 
         $activity = $this->findOwnedActivity($id, $user);
-        if ($activity === null) {
+        if (null === $activity) {
             return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
         }
 
@@ -78,11 +78,11 @@ final class ActivityChatController extends AbstractController
         }
 
         $activity = $this->findOwnedActivity($id, $user);
-        if ($activity === null) {
+        if (null === $activity) {
             return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
         }
 
-        if ($activity->getStatus() !== Activity::STATUS_READY) {
+        if (Activity::STATUS_READY !== $activity->getStatus()) {
             return $this->json(
                 ['message' => 'Activity is not ready for chat yet'],
                 Response::HTTP_CONFLICT,
@@ -90,7 +90,7 @@ final class ActivityChatController extends AbstractController
         }
 
         $featuresObjectKey = $activity->getFeaturesObjectKey();
-        if ($featuresObjectKey === null || $featuresObjectKey === '') {
+        if (null === $featuresObjectKey || '' === $featuresObjectKey) {
             return $this->json(
                 ['message' => 'Activity features are not available yet'],
                 Response::HTTP_CONFLICT,
@@ -165,7 +165,7 @@ final class ActivityChatController extends AbstractController
     private function findOwnedActivity(int $id, User $user): ?Activity
     {
         $activity = $this->activityRepository->find($id);
-        if (!$activity instanceof Activity || $activity->getUser()?->getId() !== $user->getId()) {
+        if (!$activity instanceof Activity || $activity->getUser()->getId() !== $user->getId()) {
             return null;
         }
 
@@ -188,14 +188,12 @@ final class ActivityChatController extends AbstractController
         }
 
         $message = trim($raw);
-        if ($message === '') {
+        if ('' === $message) {
             throw new InvalidChatMessageException('message is required');
         }
 
         if (mb_strlen($message) > self::MAX_MESSAGE_LENGTH) {
-            throw new InvalidChatMessageException(
-                sprintf('message is too long (max %d characters)', self::MAX_MESSAGE_LENGTH),
-            );
+            throw new InvalidChatMessageException(sprintf('message is too long (max %d characters)', self::MAX_MESSAGE_LENGTH));
         }
 
         return $message;

@@ -32,26 +32,20 @@ final class FitUploadService
         $this->validator->validate($file);
 
         $userId = $user->getId();
-        if ($userId === null) {
+        if (null === $userId) {
             throw new \LogicException('Authenticated user must be persisted before uploading a .fit file.');
         }
 
         $originalFilename = $this->sanitizeOriginalFilename($file->getClientOriginalName());
         $sourcePath = $file->getPathname();
         $checksum = hash_file('sha256', $sourcePath);
-        if ($checksum === false) {
+        if (false === $checksum) {
             throw new \RuntimeException('Unable to checksum the uploaded .fit file.');
         }
 
         $existing = $this->activityRepository->findOneByUserAndChecksum($user, $checksum);
         if ($existing instanceof Activity) {
-            throw new DuplicateFitUploadException(
-                existingActivityId: (int) $existing->getId(),
-                message: sprintf(
-                    'This .fit file was already uploaded as activity #%d.',
-                    (int) $existing->getId(),
-                ),
-            );
+            throw new DuplicateFitUploadException(existingActivityId: (int) $existing->getId(), message: sprintf('This .fit file was already uploaded as activity #%d.', (int) $existing->getId()));
         }
 
         $objectKey = $this->buildObjectKey($userId);
@@ -64,7 +58,7 @@ final class FitUploadService
         );
 
         $fileSize = $file->getSize();
-        if ($fileSize === false) {
+        if (false === $fileSize) {
             $fileSize = (int) filesize($sourcePath);
         }
 
@@ -90,14 +84,11 @@ final class FitUploadService
         } catch (UniqueConstraintViolationException) {
             $this->entityManager->clear();
             $race = $this->activityRepository->findOneByUserAndChecksum($user, $checksum);
-            throw new DuplicateFitUploadException(
-                existingActivityId: (int) ($race?->getId() ?? 0),
-                message: 'This .fit file was already uploaded.',
-            );
+            throw new DuplicateFitUploadException(existingActivityId: (int) ($race?->getId() ?? 0), message: 'This .fit file was already uploaded.');
         }
 
         $activityId = $activity->getId();
-        if ($activityId === null) {
+        if (null === $activityId) {
             throw new \LogicException('Activity must have an id after flush.');
         }
 
@@ -134,7 +125,7 @@ final class FitUploadService
     {
         $basename = pathinfo($originalFilename, PATHINFO_FILENAME);
         $safe = strtolower($this->slugger->slug($basename)->toString());
-        if ($safe === '') {
+        if ('' === $safe) {
             $safe = 'activity';
         }
 
@@ -145,6 +136,6 @@ final class FitUploadService
     {
         $basename = pathinfo($originalFilename, PATHINFO_FILENAME);
 
-        return $basename !== '' ? $basename : 'Uploaded activity';
+        return '' !== $basename ? $basename : 'Uploaded activity';
     }
 }

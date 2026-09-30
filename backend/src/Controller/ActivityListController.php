@@ -61,7 +61,7 @@ final class ActivityListController extends AbstractController
         }
 
         $user = $this->getUser();
-        if (!$user instanceof User || $activity->getUser()?->getId() !== $user->getId()) {
+        if (!$user instanceof User || $activity->getUser()->getId() !== $user->getId()) {
             return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
         }
 

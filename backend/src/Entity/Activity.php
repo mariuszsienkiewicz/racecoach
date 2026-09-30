@@ -3,10 +3,10 @@
 namespace App\Entity;
 
 use App\Repository\ActivityRepository;
+use Doctrine\Common\Collections\ArrayCollection;
+use Doctrine\Common\Collections\Collection;
 use Doctrine\DBAL\Types\Types;
 use Doctrine\ORM\Mapping as ORM;
-use Doctrine\Common\Collections\Collection;
-use Doctrine\Common\Collections\ArrayCollection;
 
 #[ORM\Entity(repositoryClass: ActivityRepository::class)]
 #[ORM\Table(name: 'activity')]
@@ -27,7 +27,7 @@ class Activity
 
     #[ORM\ManyToOne]
     #[ORM\JoinColumn(nullable: false, onDelete: 'CASCADE')]
-    private ?User $user = null;
+    private User $user;
 
     #[ORM\Column(length: 180)]
     private string $title = '';
@@ -72,35 +72,35 @@ class Activity
     private ?string $storedPath = null;
 
     /**
-     * S3/MinIO object key, e.g. users/1/fits/abc123.fit
+     * S3/MinIO object key, e.g. users/1/fits/abc123.fit.
      */
     #[ORM\Column(length: 512, nullable: true)]
     private ?string $objectKey = null;
 
     /**
      * S3/MinIO object key, e.g. users/1/abc123.metrics.json
-     * If null, the metrics are not yet calculated
+     * If null, the metrics are not yet calculated.
      */
     #[ORM\Column(length: 512, nullable: true)]
     private ?string $metricsObjectKey = null;
 
     /**
      * S3/MinIO object key, e.g. users/1/abc123.structure.json
-     * If null, the structure is not yet calculated
+     * If null, the structure is not yet calculated.
      */
     #[ORM\Column(length: 512, nullable: true)]
     private ?string $structureObjectKey = null;
 
     /**
      * S3/MinIO object key, e.g. users/1/abc123.features.json
-     * If null, the AI feature payload is not yet calculated
+     * If null, the AI feature payload is not yet calculated.
      */
     #[ORM\Column(length: 512, nullable: true)]
     private ?string $featuresObjectKey = null;
 
     /**
      * S3/MinIO object key, e.g. users/1/abc123.summary.json
-     * If null, the AI summary is not yet calculated
+     * If null, the AI summary is not yet calculated.
      */
     #[ORM\Column(length: 512, nullable: true)]
     private ?string $summaryObjectKey = null;
@@ -118,6 +118,7 @@ class Activity
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
+    /** @var Collection<int, ActivityChatMessage> */
     #[ORM\OneToMany(mappedBy: 'activity', targetEntity: ActivityChatMessage::class)]
     private Collection $chatMessages;
 
@@ -133,7 +134,7 @@ class Activity
         return $this->id;
     }
 
-    public function getUser(): ?User
+    public function getUser(): User
     {
         return $this->user;
     }
@@ -402,6 +403,9 @@ class Activity
         return $this->createdAt;
     }
 
+    /**
+     * @return Collection<int, ActivityChatMessage>
+     */
     public function getChatMessages(): Collection
     {
         return $this->chatMessages;
