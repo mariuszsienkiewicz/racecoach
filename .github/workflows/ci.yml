@@ -62,11 +62,11 @@ jobs:
           restore-keys: |
             composer-
 
-      - name: Install dependencies
-        run: composer install --prefer-dist --no-interaction --no-progress
-
       - name: Prepare env
         run: cp .env.example .env
+
+      - name: Install dependencies
+        run: composer install --prefer-dist --no-interaction --no-progress
 
       - name: PHPUnit
         run: ./bin/phpunit
