@@ -7,19 +7,20 @@ reference event after upload; workers pull FIT bytes from MinIO/S3, write JSON
 artifacts beside the `.fit`, PATCH activity state via the Symfony API, then
 publish the next routing key.
 
-`fit-chat` is **not** a queue consumer: it is a sync HTTP service Symfony calls
-for Ask AI (Bearer `CHAT_SERVICE_TOKEN`).
+`fit-chat` is **not** a queue consumer: it is an HTTP service Symfony calls
+for Ask AI (Bearer `CHAT_SERVICE_TOKEN`). Replies are streamed as **SSE**
+(`token` / `done` / `error`), not a single JSON body.
 
 ## Assumptions
 
-- **Store → reference → process** - the queue never carries the FIT file, only
+- **Store -> reference -> process** - the queue never carries the FIT file, only
   ids + storage location (`bucket`, `objectKey`, checksum, …).
 - **Topic exchange `messages`** - one routing key per stage; each worker has its
   own queue bound to the key it consumes. Symfony’s Messenger transport declares
   the exchange with **empty `queues: []`** so PHP does not create a catch-all
   `messages` queue.
 - **At-least-once delivery** - Ack after successful side effects. Retryable
-  failures use either in-process backoff + Nack(requeue) (metrics → features)
+  failures use either in-process backoff + Nack(requeue) (metrics -> features)
   or broker TTL retry + DLQ (`fit-summary`). Poison messages are Rejected.
 - **Idempotency** - before heavy work, `GET` the activity; if the expected
   artifact key is already set and status is far enough along, short-circuit by
@@ -30,8 +31,8 @@ for Ask AI (Bearer `CHAT_SERVICE_TOKEN`).
 - **Status model** - stages after upload keep the activity in `analyzing`.
   `fit-summary` PATCHes the coach summary and moves status to `ready`.
 - **Auth**
-  - Pipeline workers → Symfony: header `X-Worker-Token` (`WORKER_API_TOKEN`).
-  - Symfony → `fit-chat`: `Authorization: Bearer` (`CHAT_SERVICE_TOKEN`).
+  - Pipeline workers -> Symfony: header `X-Worker-Token` (`WORKER_API_TOKEN`).
+  - Symfony -> `fit-chat`: `Authorization: Bearer` (`CHAT_SERVICE_TOKEN`).
   - These tokens are intentionally different. End-user JWT never reaches workers.
 - **QoS** - consumers use prefetch `1` where set, so backoff / LLM work actually
   pauses that consumer instead of stacking unacked deliveries.
@@ -42,34 +43,38 @@ for Ask AI (Bearer `CHAT_SERVICE_TOKEN`).
 activity.uploaded
        │
        ▼
-  fit-metrics   → Put *.metrics.json   → PATCH /metrics   → activity.metrics.ready
+  fit-metrics   -> Put *.metrics.json   -> PATCH /metrics   -> activity.metrics.ready
        │
        ▼
- fit-structure  → Put *.structure.json → PATCH /structure → activity.structure.ready
+ fit-structure  -> Put *.structure.json -> PATCH /structure -> activity.structure.ready
        │
        ▼
- fit-features   → Put *.features.json  → PATCH /features  → activity.features.ready
+ fit-features   -> Put *.features.json  -> PATCH /features  -> activity.features.ready
        │
        ▼
-  fit-summary   → Put *.summary.json   → PATCH /summary   → activity.summary.ready
-                  (LLM; status → ready)                      (+ retry queue / DLQ)
+  fit-summary   -> Put *.summary.json   -> PATCH /summary   -> activity.summary.ready
+                  (LLM; status -> ready)                      (+ retry queue / DLQ)
 ```
 
-Same skeleton for queue workers: consume → idempotent check → transform →
-PutObject → PATCH → publish next → Ack. Only the middle step changes.
+Same skeleton for queue workers: consume -> idempotent check -> transform ->
+PutObject -> PATCH -> publish next -> Ack. Only the middle step changes.
 
-Ask AI (out of band):
+Ask AI (out of band, SSE):
 
 ```text
 React ──JWT──► Symfony ──Bearer──► fit-chat :8081
-                                    │
-                                    ├─ GetObject features (keys from request body)
-                                    ├─ optional summary text from gateway
-                                    └─ LLM CompletionRaw → { "reply" }
+                 │                    │
+                 │                    ├─ GetObject features (keys from request body)
+                 │                    ├─ optional summary + history from gateway
+                 │                    └─ LLM CompletionStream -> SSE token / done / error
+                 │
+                 ├─ persist athlete message before the stream starts
+                 └─ persist coach message after `done` (gateway owns DB writes)
 ```
 
 `fit-chat` must **not** call Symfony mid-request (avoids PHP worker deadlock).
-Artifact keys / summary come in the JSON body from the gateway.
+Artifact keys, summary, and chat history come in the JSON body from the gateway.
+Accept: `text/event-stream`.
 
 ## Binaries
 
@@ -79,14 +84,14 @@ Artifact keys / summary come in the JSON body from the gateway.
 | `fit-structure` | laps / workout structure | `activity.metrics.ready` | `activity.structure.ready` | done |
 | `fit-features` | AI-ready feature payload | `activity.structure.ready` | `activity.features.ready` | done |
 | `fit-summary` | coach narrative via LLM | `activity.features.ready` | `activity.summary.ready` | done |
-| `fit-chat` | Ask AI HTTP gateway target | `POST /v1/chat`, `GET /healthz` | `{ "reply" }` | done |
+| `fit-chat` | Ask AI HTTP gateway target | `POST /v1/chat` (SSE), `GET /healthz` | SSE `token` / `done` / `error` | done |
 
 ### Transient failure strategy
 
 | Stage | Retryable (API / MinIO / publish) | LLM down / bad JSON |
 | --- | --- | --- |
-| metrics → features | `RequeueAfterBackoff` (~30s) then Nack(requeue) | n/a |
-| summary | TTL queue `fit-summary.retry.30s` (DLX back to `activity.features.ready`), header `x-retry-count`, max **5** delayed attempts → `fit-summary.dlq` | retryable LLM → same delayed path; non-retryable / invalid JSON → Reject |
+| metrics -> features | `RequeueAfterBackoff` (~30s) then Nack(requeue) | n/a |
+| summary | TTL queue `fit-summary.retry.30s` (DLX back to `activity.features.ready`), header `x-retry-count`, max **5** delayed attempts -> `fit-summary.dlq` | retryable LLM -> same delayed path; non-retryable / invalid JSON -> Reject |
 
 ## Layout
 
@@ -106,7 +111,7 @@ workers/
     fit/            # FIT parsing (metrics, structure)
     fitmetrics/     # worker loop + process
     fitstructure/
-    fitfeatures/    # merge metrics+structure → features artifact
+    fitfeatures/    # merge metrics+structure -> features artifact
     fitsummary/     # LLM summary + retry/DLQ topology
     fitchat/        # HTTP server + chat prompts
     coach/          # ForCoachPrompt - strip recovery traps before LLM

@@ -4,11 +4,11 @@
 
 ```text
 Upload request
-   → validate .fit
-   → PutObject to MinIO (bytes)
-   → INSERT activity (objectKey + bucket)
-   → RabbitMQ event on topic exchange `messages` (references only)
-   → Go workers download by bucket/key, write JSON artifacts, PATCH API, publish next key
+   -> validate .fit
+   -> PutObject to MinIO (bytes)
+   -> INSERT activity (objectKey + bucket)
+   -> RabbitMQ event on topic exchange `messages` (references only)
+   -> Go workers download by bucket/key, write JSON artifacts, PATCH API, publish next key
 ```
 
 Symfony Messenger is **publish-only** for activity events (`queues: []` on the
@@ -19,9 +19,9 @@ Symfony Messenger is **publish-only** for activity events (`queues: []` on the
 
 - UI: http://localhost:15672 (`racecoach` / `racecoach`)
 - Exchange: `messages` (topic)
-- First event: `App\Message\ActivityUploadedMessage` → routing key `activity.uploaded`
-- Pipeline: `activity.metrics.ready` → `activity.structure.ready` →
-  `activity.features.ready` → `activity.summary.ready`
+- First event: `App\Message\ActivityUploadedMessage` -> routing key `activity.uploaded`
+- Pipeline: `activity.metrics.ready` -> `activity.structure.ready` ->
+  `activity.features.ready` -> `activity.summary.ready`
 - `fit-summary` also declares `fit-summary.retry.30s` (TTL + DLX) and
   `fit-summary.dlq`
 
@@ -42,3 +42,10 @@ Backend env:
 - `S3_USE_PATH_STYLE=true` (required for MinIO in Docker DNS)
 
 Prod swap later: same code, change endpoint/credentials to real AWS S3 and usually set path-style to false.
+
+## Related
+
+- [architecture.md](architecture.md) - why reference events, dual tokens, SSE chat
+- [../workers/README.md](../workers/README.md) - queue topology, retry/DLQ, fit-chat SSE
+- [../README.md](../README.md) - product overview and quick start
+

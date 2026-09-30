@@ -1,6 +1,14 @@
 # RaceCoach
 
-Local coaching desk for endurance athletes: upload a `.fit` workout, let a Go pipeline analyze it, then ask an AI coach about that session.
+Local coaching desk for endurance athletes: upload a `.fit` workout, run a Go analysis pipeline, then ask an AI coach about that session with **live streaming** replies.
+
+## Highlights
+
+- **Polyglot monorepo** - React 19 frontend, Symfony 7.4 API, Go workers
+- **Event-driven FIT pipeline** - RabbitMQ topic exchange; MinIO holds `.fit` + JSON artifacts; DB stores keys, not blobs
+- **Multi-turn Ask AI over SSE** - token stream from LLM -> fit-chat -> Symfony `StreamedResponse` -> live drawer bubble; history persisted per activity
+- **Separated auth** - user JWT for the browser; `X-Worker-Token` for pipeline workers; Bearer service token for fit-chat
+- **CI quality gates** - GitHub Actions: Go test/vet/build, PHPUnit, PHP-CS-Fixer, PHPStan (level 6), frontend lint + build
 
 ## Stack
 
@@ -12,7 +20,7 @@ Local coaching desk for endurance athletes: upload a `.fit` workout, let a Go pi
 | Object storage | MinIO (S3-compatible) in Docker |
 | Workers | Go services in `workers/` |
 | LLM (optional) | Ollama on the host (`llama3.1:8b` by default) |
-| Dev | Docker Compose |
+| Dev / CI | Docker Compose; GitHub Actions |
 
 ## Architecture
 
@@ -27,13 +35,33 @@ Symfony API  ──upload──►  MinIO (.fit + JSON artifacts)
 RabbitMQ ──► fit-metrics ──► fit-structure ──► fit-features ──► fit-summary
                                                                       │
                                                               LLM (Ollama)
-                                                                      │
-Ask AI: React ──► Symfony ──► fit-chat (sync HTTP) ──► MinIO + LLM
+
+Ask AI (SSE, out of band - not via RabbitMQ):
+React ──JWT──► Symfony StreamedResponse ──Bearer──► fit-chat SSE ──► LLM stream
+                 │                                    │
+                 ├─ persist athlete before stream     ├─ GetObject features
+                 └─ persist coach after `done`        └─ token / done / error events
 ```
 
-Pipeline stages write artifacts beside the FIT object (`*.metrics.json`, `*.structure.json`, …), PATCH activity state on Symfony with a shared worker token, then publish the next event. Ask AI does **not** go through RabbitMQ: Symfony calls `fit-chat` over HTTP with a separate service token.
+Pipeline stages write artifacts beside the FIT object (`*.metrics.json`, `*.structure.json`, …), PATCH activity state on Symfony with a shared worker token, then publish the next event. Ask AI stays synchronous HTTP between Symfony and fit-chat, but the body is an **SSE** stream (`token` / `done` / `error`), not a single JSON reply.
+
+Deeper notes: [docs/architecture.md](docs/architecture.md), [docs/messaging-and-storage.md](docs/messaging-and-storage.md), [workers/README.md](workers/README.md).
+
+## What works today
+
+- JWT auth + activity list
+- `.fit` upload -> MinIO -> full analysis pipeline -> activity `ready` with coach summary
+- Multi-turn Ask AI on a finished activity (live tokens in the drawer; conversation saved per activity)
+- Calendar + week overview from real activities
+
+## Coming soon
+
+- Adaptive training plans (dashboard plan panel + landing preview)
+- Device sync (Coros / Garmin OAuth) - `.fit` upload works now
 
 ## Quick start
+
+**Demo is local** via Docker Compose (no public URL yet).
 
 **Requirements:** Docker + Docker Compose. For AI summary / Ask AI, run [Ollama](https://ollama.com/) on the host and pull the model:
 
@@ -53,7 +81,7 @@ openssl pkey -in backend/config/jwt/private.pem -passin pass:racecoach_dev_jwt -
 docker compose up --build
 ```
 
-Demo user is seeded on backend start (`coach@racecoach.local` / `coach123`).
+Demo user is seeded on backend start.
 
 | Service | URL |
 | --- | --- |
@@ -65,36 +93,43 @@ Demo user is seeded on backend start (`coach@racecoach.local` / `coach123`).
 
 **Demo login:** `coach@racecoach.local` / `coach123`
 
-Without Ollama, upload and metrics/structure/features still run; summary and Ask AI will fail or retry until the LLM is available.
-
-## What works today
-
-- JWT auth + activity list
-- `.fit` upload → MinIO → full analysis pipeline → activity `ready` with coach summary
-- Ask AI on a finished activity (optimistic chat UI)
-- Calendar + week overview from real activities
-
-## Coming soon
-
-- Adaptive training plans (dashboard plan panel + landing preview)
-- Device sync (Coros / Garmin OAuth) - `.fit` upload works now
+Without Ollama, upload and metrics/structure/features still run; summary retries/DLQs and Ask AI fail until the LLM is available.
 
 ## API (high level)
 
 | Method | Path | Auth | Notes |
 | --- | --- | --- | --- |
-| `POST` | `/api/login` | - | `{ "email", "password" }` → `{ "token" }` |
+| `POST` | `/api/login` | - | `{ "email", "password" }` -> `{ "token" }` |
 | `GET` | `/api/me` | JWT | Current user |
 | `GET` | `/api/activities` | JWT | Activity list |
 | `POST` | `/api/activities/fit` | JWT | Multipart `fitFile` |
-| `POST` | `/api/activities/{id}/chat` | JWT | Ask AI about one activity |
+| `GET` | `/api/activities/{id}/chat` | JWT | Persisted conversation |
+| `POST` | `/api/activities/{id}/chat` | JWT | Ask AI - `text/event-stream` (`token` / `done` / `error`) |
 
 Workers call internal PATCH endpoints with header `X-Worker-Token` (`WORKER_API_TOKEN`). Symfony calls `fit-chat` with `Authorization: Bearer` (`CHAT_SERVICE_TOKEN`). Those tokens are different on purpose.
+
+## Quality / CI
+
+On push and pull requests, [`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs:
+
+| Job | Checks |
+| --- | --- |
+| Workers | `go test ./…`, `go vet`, build all five binaries |
+| Backend | PHPUnit, PHP-CS-Fixer (`composer cs-check`), PHPStan level 6 |
+| Frontend | `npm run lint`, `npm run build` |
+
+Backend tooling from Compose (preferred over host PHP):
+
+```bash
+docker compose exec backend composer cs-check
+docker compose exec backend composer phpstan
+docker compose exec backend composer test
+```
 
 ## Configuration
 
 - Compose injects env for all services (see `docker-compose.yml`).
-- For host-side Symfony / tooling, copy `backend/.env.example` → `backend/.env`.
+- For host-side Symfony / tooling, copy `backend/.env.example` -> `backend/.env`.
 - Dev secrets in Compose (`change-me`, `racecoachsecret`, …) are local only - change them before any shared deployment.
 - Never commit `backend/config/jwt/*.pem` or a filled `.env` with real secrets.
 
@@ -104,7 +139,6 @@ Workers call internal PATCH endpoints with header `X-Worker-Token` (`WORKER_API_
 frontend/   React app
 backend/    Symfony API
 workers/    Go pipeline + fit-chat
-docs/       Deeper notes (messaging, storage, …)
+docs/       Architecture, messaging, storage
+.github/    CI workflows
 ```
-
-See `workers/README.md` for worker conventions and queue topology.
