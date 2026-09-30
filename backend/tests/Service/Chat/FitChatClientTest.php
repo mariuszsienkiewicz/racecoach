@@ -27,22 +27,34 @@ final class FitChatClientTest extends TestCase
         );
     }
 
-    public function testAskReturnsReplyOnSuccess(): void
+    private function sseBody(string ...$chunks): string
     {
+        return implode('', $chunks);
+    }
+
+    public function testAskStreamReturnsReplyAndTokens(): void
+    {
+        $body = $this->sseBody(
+            "event: token\ndata: {\"text\":\"Nice\"}\n\n",
+            "event: token\ndata: {\"text\":\" pacing.\"}\n\n",
+            "event: done\ndata: {\"reply\":\"Nice pacing.\"}\n\n",
+        );
+
         $http = new MockHttpClient([
-            new MockResponse(
-                json_encode(['reply' => 'Nice pacing.'], JSON_THROW_ON_ERROR),
-                ['http_code' => 200],
-            ),
+            new MockResponse($body, ['http_code' => 200]),
         ]);
 
         $client = new FitChatClient($http, 'http://fit-chat:8081', 'secret', new NullLogger());
-        $reply = $client->ask($this->sampleAsk());
+        $tokens = [];
+        $reply = $client->askStream($this->sampleAsk(), static function (string $text) use (&$tokens): void {
+            $tokens[] = $text;
+        });
 
         self::assertSame('Nice pacing.', $reply->text);
+        self::assertSame(['Nice', ' pacing.'], $tokens);
     }
 
-    public function testAskMapsServerErrorToUnavailable(): void
+    public function testAskStreamMapsServerErrorToUnavailable(): void
     {
         $http = new MockHttpClient([
             new MockResponse('{"message":"boom"}', ['http_code' => 503]),
@@ -50,16 +62,10 @@ final class FitChatClientTest extends TestCase
         $client = new FitChatClient($http, 'http://fit-chat:8081', 'secret', new NullLogger());
 
         $this->expectException(FitChatUnavailableException::class);
-        $client->ask(new FitChatAskRequest(
-            userId: 1,
-            activityId: 104,
-            message: 'Hi',
-            storageBucket: 'racecoach-fits',
-            featuresObjectKey: 'users/1/fits/x.features.json',
-        ));
+        $client->askStream($this->sampleAsk(), static fn (string $text) => null);
     }
 
-    public function testAskMapsClientErrorToRejected(): void
+    public function testAskStreamMapsClientErrorToRejected(): void
     {
         $http = new MockHttpClient([
             new MockResponse('{"message":"message is required"}', ['http_code' => 400]),
@@ -67,13 +73,16 @@ final class FitChatClientTest extends TestCase
         $client = new FitChatClient($http, 'http://fit-chat:8081', 'secret', new NullLogger());
 
         try {
-            $client->ask(new FitChatAskRequest(
-                userId: 1,
-                activityId: 104,
-                message: 'Hi',
-                storageBucket: 'racecoach-fits',
-                featuresObjectKey: 'users/1/fits/x.features.json',
-            ));
+            $client->askStream(
+                new FitChatAskRequest(
+                    userId: 1,
+                    activityId: 104,
+                    message: 'Hi',
+                    storageBucket: 'racecoach-fits',
+                    featuresObjectKey: 'users/1/fits/x.features.json',
+                ),
+                static fn (string $text) => null,
+            );
             self::fail('Expected FitChatRejectedException');
         } catch (FitChatRejectedException $exception) {
             self::assertSame(400, $exception->statusCode);
@@ -81,18 +90,37 @@ final class FitChatClientTest extends TestCase
         }
     }
 
-    public function testAskMapsMissingReplyToProtocolError(): void
+    public function testAskStreamMapsErrorEventToUnavailable(): void
     {
+        $body = $this->sseBody(
+            "event: token\ndata: {\"text\":\"Hi\"}\n\n",
+            "event: error\ndata: {\"message\":\"llm down\"}\n\n",
+        );
         $http = new MockHttpClient([
-            new MockResponse('{"ok":true}', ['http_code' => 200]),
+            new MockResponse($body, ['http_code' => 200]),
+        ]);
+        $client = new FitChatClient($http, 'http://fit-chat:8081', 'secret', new NullLogger());
+
+        $this->expectException(FitChatUnavailableException::class);
+        $this->expectExceptionMessage('llm down');
+        $client->askStream($this->sampleAsk(), static fn (string $text) => null);
+    }
+
+    public function testAskStreamMissingDoneIsProtocolError(): void
+    {
+        $body = $this->sseBody(
+            "event: token\ndata: {\"text\":\"Hi\"}\n\n",
+        );
+        $http = new MockHttpClient([
+            new MockResponse($body, ['http_code' => 200]),
         ]);
         $client = new FitChatClient($http, 'http://fit-chat:8081', 'secret', new NullLogger());
 
         $this->expectException(FitChatProtocolException::class);
-        $client->ask($this->sampleAsk());
+        $client->askStream($this->sampleAsk(), static fn (string $text) => null);
     }
 
-    public function testAskSendsBearerAndArtifactKeys(): void
+    public function testAskStreamSendsBearerAndArtifactKeys(): void
     {
         $http = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             self::assertSame('POST', $method);
@@ -102,6 +130,11 @@ final class FitChatClientTest extends TestCase
                 ?? $options['headers']['Authorization']
                 ?? null;
             self::assertSame('Authorization: Bearer secret', $authorization);
+
+            $accept = $options['normalized_headers']['accept'][0]
+                ?? $options['headers']['Accept']
+                ?? null;
+            self::assertNotFalse(stripos((string) $accept, 'text/event-stream'));
 
             $body = json_decode($options['body'], true, 512, JSON_THROW_ON_ERROR);
             self::assertSame([
@@ -118,11 +151,14 @@ final class FitChatClientTest extends TestCase
                 'summary' => 'Headline note',
             ], $body);
 
-            return new MockResponse(json_encode(['reply' => 'ok'], JSON_THROW_ON_ERROR));
+            return new MockResponse(
+                "event: done\ndata: {\"reply\":\"ok\"}\n\n",
+                ['http_code' => 200],
+            );
         });
 
         $client = new FitChatClient($http, 'http://fit-chat:8081/', 'secret', new NullLogger());
-        $client->ask(new FitChatAskRequest(
+        $client->askStream(new FitChatAskRequest(
             userId: 7,
             activityId: 104,
             message: 'Tell me more',
@@ -134,19 +170,22 @@ final class FitChatClientTest extends TestCase
                 ['role' => 'athlete', 'content' => 'Earlier question'],
                 ['role' => 'coach', 'content' => 'Earlier answer'],
             ],
-        ));
+        ), static fn (string $text) => null);
     }
 
-    public function testAskOmitsHistoryWhenNull(): void
+    public function testAskStreamOmitsHistoryWhenNull(): void
     {
         $http = new MockHttpClient(function (string $method, string $url, array $options): MockResponse {
             $body = json_decode($options['body'], true, 512, JSON_THROW_ON_ERROR);
             self::assertArrayNotHasKey('history', $body);
 
-            return new MockResponse(json_encode(['reply' => 'ok'], JSON_THROW_ON_ERROR));
+            return new MockResponse(
+                "event: done\ndata: {\"reply\":\"ok\"}\n\n",
+                ['http_code' => 200],
+            );
         });
 
         $client = new FitChatClient($http, 'http://fit-chat:8081/', 'secret', new NullLogger());
-        $client->ask($this->sampleAsk());
+        $client->askStream($this->sampleAsk(), static fn (string $text) => null);
     }
 }

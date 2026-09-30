@@ -171,48 +171,158 @@ export async function fetchActivityChat(
   return mapChatMessages(data.messages)
 }
 
+type PostActivityChatOptions = {
+  onToken?: (text: string) => void
+  signal?: AbortSignal
+}
+
+/**
+ * POST /api/activities/{id}/chat - SSE stream (token / done / error).
+ * Uses fetch + manual SSE parse (EventSource cannot send POST + JWT).
+ */
 export async function postActivityChat(
   token: string,
   activityId: string | number,
   message: string,
+  options: PostActivityChatOptions = {},
 ): Promise<ActivityChatResponse> {
   const response = await fetch(`${API_BASE}/api/activities/${activityId}/chat`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
-      Accept: 'application/json',
+      Accept: 'text/event-stream',
     },
     body: JSON.stringify({ message }),
+    signal: options.signal,
   })
 
   if (response.status === 401) {
     throw new Error('Your session expired. Please sign in again.')
   }
 
+  // Validation / ownership errors still arrive as JSON before the stream starts.
+  const contentType = response.headers.get('content-type') ?? ''
   if (!response.ok) {
     throw new Error(await readErrorMessage(response, 'Could not reach the AI coach.'))
   }
-
-  const data = (await response.json()) as {
-    reply?: unknown
-    activityId?: unknown
-    messages?: unknown
+  if (!contentType.includes('text/event-stream') || !response.body) {
+    throw new Error('AI coach returned an unexpected response.')
   }
 
-  const reply = typeof data.reply === 'string' ? data.reply.trim() : ''
-  if (reply === '') {
-    throw new Error('AI coach returned an empty reply.')
+  return consumeActivityChatSse(response.body, String(activityId), options.onToken)
+}
+
+async function consumeActivityChatSse(
+  body: ReadableStream<Uint8Array>,
+  fallbackActivityId: string,
+  onToken?: (text: string) => void,
+): Promise<ActivityChatResponse> {
+  const reader = body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let eventName: string | null = null
+  let dataLines: string[] = []
+  let result: ActivityChatResponse | null = null
+
+  const handleEvent = (event: string, data: string) => {
+    let payload: unknown
+    try {
+      payload = JSON.parse(data) as unknown
+    } catch {
+      throw new Error('AI coach returned invalid stream data.')
+    }
+    if (!payload || typeof payload !== 'object') {
+      throw new Error('AI coach returned invalid stream data.')
+    }
+    const record = payload as Record<string, unknown>
+
+    if (event === 'token') {
+      const text = record.text
+      if (typeof text === 'string' && text !== '') {
+        onToken?.(text)
+      }
+      return
+    }
+
+    if (event === 'error') {
+      const message =
+        typeof record.message === 'string' && record.message.trim() !== ''
+          ? record.message.trim()
+          : 'Could not reach the AI coach.'
+      throw new Error(message)
+    }
+
+    if (event === 'done') {
+      const reply = typeof record.reply === 'string' ? record.reply.trim() : ''
+      if (reply === '') {
+        throw new Error('AI coach returned an empty reply.')
+      }
+      const messages = mapChatMessages(record.messages)
+      if (messages.length < 2) {
+        throw new Error('AI coach returned an incomplete conversation turn.')
+      }
+      result = {
+        reply,
+        activityId:
+          record.activityId != null ? String(record.activityId) : fallbackActivityId,
+        messages,
+      }
+    }
   }
 
-  const messages = mapChatMessages(data.messages)
-  if (messages.length < 2) {
-    throw new Error('AI coach returned an incomplete conversation turn.')
+  while (true) {
+    const { done, value } = await reader.read()
+    if (done) {
+      break
+    }
+
+    buffer += decoder.decode(value, { stream: true })
+
+    while (true) {
+      const newline = buffer.indexOf('\n')
+      if (newline === -1) {
+        break
+      }
+
+      let line = buffer.slice(0, newline)
+      buffer = buffer.slice(newline + 1)
+      if (line.endsWith('\r')) {
+        line = line.slice(0, -1)
+      }
+
+      if (line === '') {
+        if (eventName === null && dataLines.length === 0) {
+          continue
+        }
+        const event = eventName ?? 'message'
+        const data = dataLines.join('\n')
+        eventName = null
+        dataLines = []
+        handleEvent(event, data)
+        continue
+      }
+
+      if (line.startsWith(':')) {
+        continue
+      }
+      if (line.startsWith('event:')) {
+        eventName = line.slice('event:'.length).trim()
+        continue
+      }
+      if (line.startsWith('data:')) {
+        dataLines.push(line.slice('data:'.length).replace(/^\s/, ''))
+      }
+    }
   }
 
-  return {
-    reply,
-    activityId: data.activityId != null ? String(data.activityId) : String(activityId),
-    messages,
+  if (eventName !== null || dataLines.length > 0) {
+    handleEvent(eventName ?? 'message', dataLines.join('\n'))
   }
+
+  if (result === null) {
+    throw new Error('AI coach stream ended without a reply.')
+  }
+
+  return result
 }

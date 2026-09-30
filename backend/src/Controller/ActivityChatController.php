@@ -15,6 +15,7 @@ use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\CurrentUser;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
@@ -71,7 +72,7 @@ final class ActivityChatController extends AbstractController
         int $id,
         Request $request,
         #[CurrentUser] ?User $user,
-    ): JsonResponse {
+    ): Response {
         if (!$user instanceof User) {
             return $this->json(['message' => 'Unauthorized'], Response::HTTP_UNAUTHORIZED);
         }
@@ -98,25 +99,67 @@ final class ActivityChatController extends AbstractController
 
         try {
             $message = $this->parseMessage($request);
-            $result = $this->activityChatService->ask($activity, $message);
         } catch (InvalidChatMessageException $exception) {
             return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_REQUEST);
-        } catch (FitChatUnavailableException) {
-            return $this->json(['message' => 'AI coach unavailable'], Response::HTTP_SERVICE_UNAVAILABLE);
-        } catch (FitChatRejectedException $exception) {
-            return $this->json(['message' => $exception->getMessage()], Response::HTTP_BAD_GATEWAY);
-        } catch (FitChatProtocolException) {
-            return $this->json(['message' => 'Invalid chat response'], Response::HTTP_BAD_GATEWAY);
         }
 
-        return $this->json([
-            'reply' => $result->reply,
-            'activityId' => $activity->getId(),
-            'messages' => [
-                $result->athleteMessage->toApiArray(),
-                $result->coachMessage->toApiArray(),
+        return new StreamedResponse(
+            function () use ($activity, $message): void {
+                $this->emitChatStream($activity, $message);
+            },
+            Response::HTTP_OK,
+            [
+                'Content-Type' => 'text/event-stream',
+                'Cache-Control' => 'no-cache',
+                'Connection' => 'keep-alive',
+                'X-Accel-Buffering' => 'no',
             ],
-        ]);
+        );
+    }
+
+    private function emitChatStream(Activity $activity, string $message): void
+    {
+        while (ob_get_level() > 0) {
+            ob_end_flush();
+        }
+
+        try {
+            $result = $this->activityChatService->ask(
+                $activity,
+                $message,
+                function (string $text): void {
+                    $this->writeSse('token', ['text' => $text]);
+                },
+            );
+
+            $this->writeSse('done', [
+                'reply' => $result->reply,
+                'activityId' => $activity->getId(),
+                'messages' => [
+                    $result->athleteMessage->toApiArray(),
+                    $result->coachMessage->toApiArray(),
+                ],
+            ]);
+        } catch (FitChatUnavailableException) {
+            $this->writeSse('error', ['message' => 'AI coach unavailable']);
+        } catch (FitChatRejectedException $exception) {
+            $this->writeSse('error', ['message' => $exception->getMessage()]);
+        } catch (FitChatProtocolException) {
+            $this->writeSse('error', ['message' => 'Invalid chat response']);
+        } catch (\Throwable) {
+            $this->writeSse('error', ['message' => 'AI coach unavailable']);
+        }
+    }
+
+    /**
+     * @param array<string, mixed> $payload
+     */
+    private function writeSse(string $event, array $payload): void
+    {
+        echo sprintf("event: %s\ndata: %s\n\n", $event, json_encode($payload, JSON_THROW_ON_ERROR));
+        if (function_exists('flush')) {
+            flush();
+        }
     }
 
     private function findOwnedActivity(int $id, User $user): ?Activity
