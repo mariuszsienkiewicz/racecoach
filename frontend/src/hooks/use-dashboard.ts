@@ -208,9 +208,11 @@ export function useActivityCoach(activityId: string | null) {
         return
       }
 
-      const optimisticId = `local_athlete_${Date.now()}`
+      const now = Date.now()
+      const optimisticAthleteId = `local_athlete_${now}`
+      const streamingCoachId = `local_coach_${now}`
       const athleteMessage: ChatMessage = {
-        id: optimisticId,
+        id: optimisticAthleteId,
         role: 'athlete',
         content: trimmed,
         createdAt: new Date().toISOString(),
@@ -221,13 +223,39 @@ export function useActivityCoach(activityId: string | null) {
       setMessages((prev) => [...prev, athleteMessage])
 
       try {
-        const turn = await dashboardService.askCoach(token, activityId, trimmed)
+        const turn = await dashboardService.askCoach(token, activityId, trimmed, {
+          onToken: (text) => {
+            setMessages((prev) => {
+              const existing = prev.find((message) => message.id === streamingCoachId)
+              if (existing) {
+                return prev.map((message) =>
+                  message.id === streamingCoachId
+                    ? { ...message, content: message.content + text }
+                    : message,
+                )
+              }
+              return [
+                ...prev,
+                {
+                  id: streamingCoachId,
+                  role: 'coach' as const,
+                  content: text,
+                  createdAt: new Date().toISOString(),
+                },
+              ]
+            })
+          },
+        })
         setMessages((prev) => {
-          const withoutOptimistic = prev.filter((message) => message.id !== optimisticId)
-          return [...withoutOptimistic, ...turn]
+          const withoutLocal = prev.filter(
+            (message) =>
+              message.id !== optimisticAthleteId && message.id !== streamingCoachId,
+          )
+          return [...withoutLocal, ...turn]
         })
       } catch (err) {
-        // Athlete turn is already persisted server-side; keep it visible and surface the error.
+        // Athlete turn is already persisted server-side; drop the streaming coach bubble.
+        setMessages((prev) => prev.filter((message) => message.id !== streamingCoachId))
         setError(err instanceof Error ? err.message : 'Could not reach the AI coach.')
       } finally {
         setSending(false)

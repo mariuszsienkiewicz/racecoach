@@ -40,8 +40,9 @@ export async function askCoach(
   token: string,
   activityId: string,
   content: string,
+  options: { onToken?: (text: string) => void; signal?: AbortSignal } = {},
 ): Promise<ChatMessage[]> {
-  const { messages } = await postActivityChat(token, activityId, content)
+  const { messages } = await postActivityChat(token, activityId, content, options)
   return messages
 }
 

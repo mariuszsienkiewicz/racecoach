@@ -56,10 +56,14 @@ export function AiCoachDrawer({ activity, onClose }: AiCoachDrawerProps) {
   const { messages, loading, sending, error, sendMessage } = useActivityCoach(activity?.id ?? null)
   const [draft, setDraft] = useState('')
   const bottomRef = useRef<HTMLDivElement>(null)
+  const streamingCoach = messages.find(
+    (message) => message.role === 'coach' && message.id.startsWith('local_coach_'),
+  )
+  const waitingForFirstToken = sending && !streamingCoach
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [messages, sending, activity?.id])
+  }, [messages, sending, streamingCoach?.content, activity?.id])
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault()
@@ -142,7 +146,7 @@ export function AiCoachDrawer({ activity, onClose }: AiCoachDrawerProps) {
             <CoachMessage key={message.id} message={message} />
           ))}
 
-          {sending ? (
+          {waitingForFirstToken ? (
             <Message align="start" className="rc-fade-up-soft">
               <MessageAvatar>
                 <Avatar size="sm" className="bg-primary/15">

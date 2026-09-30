@@ -29,7 +29,12 @@ final class ActivityChatService
         return $this->activityChatMessageRepository->findByActivity($activity);
     }
 
-    public function ask(Activity $activity, string $message): ActivityChatAskResult
+    /**
+     * Persist athlete, stream coach tokens via $onToken, persist coach on success.
+     *
+     * @param callable(string):void $onToken
+     */
+    public function ask(Activity $activity, string $message, callable $onToken): ActivityChatAskResult
     {
         $user = $activity->getUser();
         $activityId = $activity->getId();
@@ -56,7 +61,7 @@ final class ActivityChatService
         $this->entityManager->persist($athleteMessage);
         $this->entityManager->flush();
 
-        $reply = $this->fitChatClient->ask(new FitChatAskRequest(
+        $reply = $this->fitChatClient->askStream(new FitChatAskRequest(
             userId: (int) $user->getId(),
             activityId: $activityId,
             message: $message,
@@ -65,7 +70,7 @@ final class ActivityChatService
             summaryObjectKey: $activity->getSummaryObjectKey(),
             summary: $activity->getSummary(),
             history: $history,
-        ));
+        ), $onToken);
 
         $coachMessage = (new ActivityChatMessage())
             ->setActivity($activity)

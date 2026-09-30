@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -46,6 +47,14 @@ type Choice struct {
 	Message Message `json:"message"`
 }
 
+type streamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
+}
+
 func NewClient(baseURL string, model string, apiToken string) *Client {
 	return &Client{
 		httpClient: &http.Client{Timeout: 180 * time.Second},
@@ -85,6 +94,15 @@ func (c *Client) NewChatCompletionRequest(messages []Message) CompletionRequest 
 		Model:       c.model,
 		Messages:    messages,
 		Stream:      false,
+		Temperature: 0.4,
+	}
+}
+
+func (c *Client) NewChatCompletionRequestStream(messages []Message) CompletionRequest {
+	return CompletionRequest{
+		Model:       c.model,
+		Messages:    messages,
+		Stream:      true,
 		Temperature: 0.4,
 	}
 }
@@ -134,6 +152,82 @@ func (c *Client) CompletionRaw(ctx context.Context, request CompletionRequest) (
 	}
 	content := completionResponse.Choices[0].Message.Content
 	return content, nil
+}
+
+func (c *Client) CompletionStream(ctx context.Context, request CompletionRequest, onDelta func(string) error) (string, error) {
+	request.Stream = true
+	body, err := json.Marshal(request)
+	if err != nil {
+		return "", fmt.Errorf("marshal: %w", err)
+	}
+
+	url := c.baseURL + "/chat/completions"
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("new request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiToken)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		respBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if readErr != nil {
+			return "", fmt.Errorf("read body: %w", readErr)
+		}
+		return "", &HTTPError{StatusCode: resp.StatusCode, Body: string(respBody)}
+	}
+
+	return consumeCompletionStream(resp.Body, onDelta)
+}
+
+func consumeCompletionStream(r io.Reader, onDelta func(string) error) (string, error) {
+	scanner := bufio.NewScanner(r)
+	// bump buffer size for unusually large SSE data lines
+	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+
+	var full strings.Builder
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || !strings.HasPrefix(line, "data:") {
+			continue
+		}
+
+		payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
+		if payload == "[DONE]" {
+			break
+		}
+
+		var chunk streamChunk
+		if err := json.Unmarshal([]byte(payload), &chunk); err != nil {
+			return full.String(), fmt.Errorf("unmarshal stream chunk: %w", err)
+		}
+		if len(chunk.Choices) == 0 {
+			continue
+		}
+
+		content := chunk.Choices[0].Delta.Content
+		if content == "" {
+			continue
+		}
+
+		full.WriteString(content)
+		if onDelta != nil {
+			if err := onDelta(content); err != nil {
+				return full.String(), err
+			}
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return full.String(), fmt.Errorf("scan stream: %w", err)
+	}
+	return full.String(), nil
 }
 
 // ExtractJSONObject strips markdown fences and keeps the first JSON object if the model wrapped it in prose (e.g. "Here is the JSON:\n{...}")

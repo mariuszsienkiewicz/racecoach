@@ -209,6 +209,43 @@ func assertMsg(t *testing.T, got llm.Message, role, content string) {
 	}
 }
 
+func TestSSEEventPayloads(t *testing.T) {
+	t.Parallel()
+
+	tok := tokenEvent("Hi")
+	if tok.Event != "token" || tok.Data != `{"text":"Hi"}` {
+		t.Fatalf("token event=%+v", tok)
+	}
+	done := doneEvent("Hello")
+	if done.Event != "done" || done.Data != `{"reply":"Hello"}` {
+		t.Fatalf("done event=%+v", done)
+	}
+	errEv := errorEvent("boom")
+	if errEv.Event != "error" || errEv.Data != `{"message":"boom"}` {
+		t.Fatalf("error event=%+v", errEv)
+	}
+}
+
+func TestWriteSSEFormat(t *testing.T) {
+	t.Parallel()
+
+	rec := httptest.NewRecorder()
+	startSSE(rec)
+	rc := http.NewResponseController(rec)
+	if err := writeSSE(rc, rec, tokenEvent("Hel")); err != nil {
+		t.Fatalf("writeSSE: %v", err)
+	}
+
+	body := rec.Body.String()
+	want := "event: token\ndata: {\"text\":\"Hel\"}\n\n"
+	if body != want {
+		t.Fatalf("body=%q want %q", body, want)
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Fatalf("Content-Type=%q", ct)
+	}
+}
+
 func historyBodyWithTurns(n int) string {
 	var b strings.Builder
 	b.WriteString(`{"activityId":1,"userId":2,"message":"hi","storageBucket":"b","featuresObjectKey":"k","history":[`)
