@@ -18,8 +18,7 @@ import (
 const maxChatMessageLen = 2000
 const maxHistoryLen = 12
 
-// chatRequest is the private Symfony → fit-chat contract.
-// Artifact keys come from the gateway so we never call Symfony back mid-request.
+// chatRequest is the private Symfony to fit-chat contract.
 type chatRequest struct {
 	ActivityID        int           `json:"activityId"`
 	UserID            int           `json:"userId"`
@@ -36,8 +35,21 @@ type historyTurn struct {
 	Content string `json:"content"`
 }
 
-type chatResponse struct {
+type sseEvent struct {
+	Event string
+	Data  string
+}
+
+type tokenEventData struct {
+	Text string `json:"text"`
+}
+
+type doneEventData struct {
 	Reply string `json:"reply"`
+}
+
+type errorEventData struct {
+	Message string `json:"message"`
 }
 
 func handleChat(ctx context.Context, w http.ResponseWriter, r *http.Request, storageClient *storage.Client, llmClient *llm.Client) error {
@@ -86,20 +98,74 @@ func handleChat(ctx context.Context, w http.ResponseWriter, r *http.Request, sto
 
 	log.Printf("generating chat reply for activity=%d", request.ActivityID)
 
-	raw, err := llmClient.CompletionRaw(ctx, llmClient.NewChatCompletionRequest(messages))
-	if err != nil {
-		return fmt.Errorf("chat completion: %w", err)
+	rc := http.NewResponseController(w)
+	startSSE(w)
+
+	// From here the HTTP status is committed as 200 and event-stream.
+	// Failures must be SSE event:error (return nil), never a second JSON status from Serve.
+	raw, streamErr := llmClient.CompletionStream(
+		ctx,
+		llmClient.NewChatCompletionRequestStream(messages),
+		func(token string) error {
+			return writeSSE(rc, w, tokenEvent(token))
+		},
+	)
+	if streamErr != nil {
+		log.Printf("chat stream failed activity=%d: %v", request.ActivityID, streamErr)
+		_ = writeSSE(rc, w, errorEvent(streamErr.Error()))
+		return nil
 	}
 
 	reply := strings.TrimSpace(raw)
 	if reply == "" {
-		writeJSONError(w, http.StatusBadGateway, "empty chat reply")
+		log.Printf("chat stream empty reply activity=%d", request.ActivityID)
+		_ = writeSSE(rc, w, errorEvent("empty chat reply"))
 		return nil
 	}
 
-	return writeJSON(w, http.StatusOK, chatResponse{
-		Reply: reply,
-	})
+	if err := writeSSE(rc, w, doneEvent(reply)); err != nil {
+		log.Printf("failed to write done event activity=%d: %v", request.ActivityID, err)
+		return nil
+	}
+	return nil
+}
+
+func startSSE(w http.ResponseWriter) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(http.StatusOK)
+}
+
+func writeSSE(rc *http.ResponseController, w http.ResponseWriter, event sseEvent) error {
+	if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event.Event, event.Data); err != nil {
+		return fmt.Errorf("write sse: %w", err)
+	}
+	if err := rc.Flush(); err != nil {
+		return fmt.Errorf("flush sse: %w", err)
+	}
+	return nil
+}
+
+func tokenEvent(text string) sseEvent {
+	return mustSSEEvent("token", tokenEventData{Text: text})
+}
+
+func doneEvent(reply string) sseEvent {
+	return mustSSEEvent("done", doneEventData{Reply: reply})
+}
+
+func errorEvent(message string) sseEvent {
+	return mustSSEEvent("error", errorEventData{Message: message})
+}
+
+func mustSSEEvent(event string, payload any) sseEvent {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		panic(fmt.Sprintf("marshal sse %s payload: %v", event, err))
+	}
+	return sseEvent{Event: event, Data: string(data)}
 }
 
 func normalizeChatRequest(request *chatRequest) {
