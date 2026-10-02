@@ -59,9 +59,13 @@ Deeper notes: [docs/architecture.md](docs/architecture.md), [docs/messaging-and-
 - Adaptive training plans (dashboard plan panel + landing preview)
 - Device sync (Coros / Garmin OAuth) - `.fit` upload works now
 
-## Quick start
+## Live demo
 
-**Demo is local** via Docker Compose (no public URL yet).
+- **https://racecoach.heaps.pl** - EC2 + RDS + S3 + Caddy HTTPS
+
+Local vs AWS runbooks: [docs/aws-deploy-ec2.md](docs/aws-deploy-ec2.md).
+
+## Quick start (local)
 
 **Requirements:** Docker + Docker Compose. For AI summary / Ask AI, run [Ollama](https://ollama.com/) on the host and pull the model:
 
@@ -94,6 +98,20 @@ Demo user is seeded on backend start.
 **Demo login:** `coach@racecoach.local` / `coach123`
 
 Without Ollama, upload and metrics/structure/features still run; summary retries/DLQs and Ask AI fail until the LLM is available.
+
+### AWS demo (optional)
+
+Same monorepo, second Compose file - **does not change** local `docker compose up`:
+
+```bash
+cp .env.aws.example .env.aws   # on the server only; fill RDS/S3/DOMAIN
+docker compose --env-file .env.aws \
+  -f docker-compose.yml -f docker-compose.aws.yml \
+  up -d --build rabbitmq backend frontend caddy \
+  fit-metrics fit-structure fit-features fit-summary fit-chat
+```
+
+Details: [docs/aws-deploy-ec2.md](docs/aws-deploy-ec2.md). Domain is set via `DOMAIN` env (Caddyfile uses `{$DOMAIN}`), not hard-coded in git beyond the example.
 
 ## API (high level)
 
@@ -136,9 +154,12 @@ docker compose exec backend composer test
 ## Repo layout
 
 ```text
-frontend/   React app
-backend/    Symfony API
-workers/    Go pipeline + fit-chat
-docs/       Architecture, messaging, storage
-.github/    CI workflows
+frontend/              React app (+ Dockerfile.prod for demo)
+backend/               Symfony API
+workers/               Go pipeline + fit-chat
+deploy/Caddyfile       TLS reverse proxy (DOMAIN from env)
+docker-compose.yml     Local stack
+docker-compose.aws.yml AWS / HTTPS overlay
+docs/                  Architecture, messaging, AWS deploy
+.github/               CI workflows
 ```

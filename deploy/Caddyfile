@@ -1,0 +1,13 @@
+# Domain comes from env (set DOMAIN in .env.aws / compose).
+# Example: DOMAIN=racecoach.heaps.pl
+{$DOMAIN} {
+	encode gzip
+
+	handle /api* {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		reverse_proxy frontend:80
+	}
+}

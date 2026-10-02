@@ -1,0 +1,138 @@
+# AWS / demo overlay
+#
+# Usage on the server (after copying secrets to .env.aws):
+#   docker compose --env-file .env.aws -f docker-compose.yml -f docker-compose.aws.yml \
+#     up -d --build rabbitmq backend frontend caddy \
+#     fit-metrics fit-structure fit-features fit-summary fit-chat
+#
+# Do NOT start: database, minio, minio-init, adminer (use RDS + S3).
+# Requires Docker Compose v2.24+
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.prod
+    command: !reset null
+    ports: !reset []
+    volumes: !reset []
+    environment: !reset {}
+
+  backend:
+    ports: !reset []
+    volumes:
+      - ./backend:/app
+    environment:
+      CORS_ALLOW_ORIGIN: ${CORS_ALLOW_ORIGIN}
+      DATABASE_URL: ${DATABASE_URL}
+      POSTGRES_HOST: ${POSTGRES_HOST}
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-false}
+    depends_on: !reset
+      rabbitmq:
+        condition: service_healthy
+
+  fit-metrics:
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-false}
+    depends_on: !reset
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  fit-structure:
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-false}
+    depends_on: !reset
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  fit-features:
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-false}
+    depends_on: !reset
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  fit-summary:
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-false}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    extra_hosts: !reset []
+    depends_on: !reset
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  fit-chat:
+    environment:
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_REGION: ${S3_REGION}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_USE_PATH_STYLE: ${S3_USE_PATH_STYLE:-false}
+      LLM_BASE_URL: ${LLM_BASE_URL:-}
+      LLM_MODEL: ${LLM_MODEL:-}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+    extra_hosts: !reset []
+    depends_on: !reset
+      rabbitmq:
+        condition: service_healthy
+      backend:
+        condition: service_started
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+
+volumes:
+  caddy_data:
+  caddy_config:

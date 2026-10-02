@@ -7,7 +7,9 @@
 .env
 .env.local
 .env.*.local
+.env.aws
 !.env.example
+!.env.aws.example
 !**/.env.example
 
 # Backend
@@ -28,3 +30,5 @@ workers/fit-features
 workers/fit-summary
 workers/fit-chat
 
+# Docker
+docker-compose.override.yml
