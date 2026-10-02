@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { MessageSquare, SendHorizontal, X } from 'lucide-react'
+import ReactMarkdown from 'react-markdown'
 
 import { useActivityCoach } from '@/hooks/use-dashboard'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -21,6 +22,23 @@ type AiCoachDrawerProps = {
   activity: Activity | null
   onClose: () => void
 }
+
+const coachMarkdownClassName = cn(
+  '[&>*:first-child]:mt-0 [&>*:last-child]:mb-0',
+  '[&_p]:my-2 [&_p:first-child]:mt-0 [&_p:last-child]:mb-0',
+  '[&_strong]:font-semibold',
+  '[&_em]:italic',
+  '[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-4',
+  '[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-4',
+  '[&_li]:my-0.5',
+  '[&_h1]:mt-2 [&_h1]:mb-1 [&_h1]:text-base [&_h1]:font-semibold',
+  '[&_h2]:mt-2 [&_h2]:mb-1 [&_h2]:text-sm [&_h2]:font-semibold',
+  '[&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-sm [&_h3]:font-semibold',
+  '[&_a]:underline [&_a]:underline-offset-2',
+  '[&_code]:rounded [&_code]:bg-black/10 [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[0.85em]',
+  '[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded-lg [&_pre]:bg-black/10 [&_pre]:p-2',
+  '[&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-current/30 [&_blockquote]:pl-3 [&_blockquote]:opacity-90',
+)
 
 function CoachMessage({ message }: { message: ChatMessage }) {
   const isAthlete = message.role === 'athlete'
@@ -45,7 +63,13 @@ function CoachMessage({ message }: { message: ChatMessage }) {
       <MessageContent>
         <MessageHeader>{isAthlete ? 'You' : 'RaceCoach'}</MessageHeader>
         <Bubble variant={isAthlete ? 'outline' : 'default'} align={isAthlete ? 'end' : 'start'}>
-          <BubbleContent className="whitespace-pre-wrap">{message.content}</BubbleContent>
+          {isAthlete ? (
+            <BubbleContent className="whitespace-pre-wrap">{message.content}</BubbleContent>
+          ) : (
+            <BubbleContent className={coachMarkdownClassName}>
+              <ReactMarkdown>{message.content}</ReactMarkdown>
+            </BubbleContent>
+          )}
         </Bubble>
       </MessageContent>
     </Message>
