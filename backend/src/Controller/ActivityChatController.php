@@ -143,12 +143,22 @@ final class ActivityChatController extends AbstractController
         } catch (FitChatUnavailableException) {
             $this->writeSse('error', ['message' => 'AI coach unavailable']);
         } catch (FitChatRejectedException $exception) {
-            $this->writeSse('error', ['message' => $exception->getMessage()]);
+            $this->writeSse('error', ['message' => $this->publicFitChatRejectedMessage($exception)]);
         } catch (FitChatProtocolException) {
             $this->writeSse('error', ['message' => 'Invalid chat response']);
         } catch (\Throwable) {
             $this->writeSse('error', ['message' => 'AI coach unavailable']);
         }
+    }
+
+    private function publicFitChatRejectedMessage(FitChatRejectedException $exception): string
+    {
+        $detail = $exception->getMessage();
+        if (str_contains(strtolower($detail), 'message is too long')) {
+            return 'Your message is too long. Please shorten it and try again.';
+        }
+
+        return 'Could not process your message. Please try again.';
     }
 
     /**
@@ -193,7 +203,7 @@ final class ActivityChatController extends AbstractController
         }
 
         if (mb_strlen($message) > self::MAX_MESSAGE_LENGTH) {
-            throw new InvalidChatMessageException(sprintf('message is too long (max %d characters)', self::MAX_MESSAGE_LENGTH));
+            throw new InvalidChatMessageException('Your message is too long. Please shorten it and try again.');
         }
 
         return $message;

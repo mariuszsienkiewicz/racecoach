@@ -12,6 +12,7 @@ use Doctrine\ORM\EntityManagerInterface;
 final class ActivityChatService
 {
     private const HISTORY_LIMIT = 12;
+    private const HISTORY_CONTENT_LIMIT = 4000;
 
     public function __construct(
         private readonly ActivityChatMessageRepository $activityChatMessageRepository,
@@ -47,9 +48,9 @@ final class ActivityChatService
         }
 
         $history = array_map(
-            static fn (ActivityChatMessage $chatMessage): array => [
+            fn (ActivityChatMessage $chatMessage): array => [
                 'role' => $chatMessage->getRole()->value,
-                'content' => $chatMessage->getContent(),
+                'content' => $this->truncateForLlm($chatMessage->getContent()),
             ],
             $this->activityChatMessageRepository->findRecentByActivity($activity, self::HISTORY_LIMIT),
         );
@@ -84,5 +85,14 @@ final class ActivityChatService
             athleteMessage: $athleteMessage,
             coachMessage: $coachMessage,
         );
+    }
+
+    private function truncateForLlm(string $content): string
+    {
+        if (mb_strlen($content) <= self::HISTORY_CONTENT_LIMIT) {
+            return $content;
+        }
+
+        return mb_substr($content, 0, self::HISTORY_CONTENT_LIMIT - 1).'…';
     }
 }

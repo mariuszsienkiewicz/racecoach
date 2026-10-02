@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/racecoach/workers/internal/llm"
 )
@@ -55,16 +56,10 @@ func TestHandleChatValidation(t *testing.T) {
 			wantSubstr: "history content is required",
 		},
 		{
-			name:       "history too many turns",
-			body:       historyBodyWithTurns(maxHistoryLen + 1),
+			name:       "message too long",
+			body:       `{"activityId":1,"userId":2,"message":"` + strings.Repeat("m", maxChatMessageLen+1) + `","storageBucket":"b","featuresObjectKey":"k"}`,
 			wantStatus: http.StatusBadRequest,
-			wantSubstr: "history is too long",
-		},
-		{
-			name:       "history content too long",
-			body:       `{"activityId":1,"userId":2,"message":"hi","storageBucket":"b","featuresObjectKey":"k","history":[{"role":"coach","content":"` + strings.Repeat("a", maxChatMessageLen+1) + `"}]}`,
-			wantStatus: http.StatusBadRequest,
-			wantSubstr: "history content is too long",
+			wantSubstr: "message is too long",
 		},
 	}
 
@@ -110,6 +105,55 @@ func TestNormalizeChatRequestTrimsHistoryInPlace(t *testing.T) {
 	}
 	if req.History[1].Role != "coach" || req.History[1].Content != "reply" {
 		t.Fatalf("history[1]=%+v", req.History[1])
+	}
+}
+
+func TestNormalizeChatRequestWindowsAndTruncatesHistory(t *testing.T) {
+	t.Parallel()
+
+	history := make([]historyTurn, 0, maxHistoryLen+3)
+	for i := 0; i < maxHistoryLen+3; i++ {
+		role := "athlete"
+		if i%2 == 1 {
+			role = "coach"
+		}
+		history = append(history, historyTurn{Role: role, Content: "turn-" + strings.Repeat("x", i)})
+	}
+	long := strings.Repeat("あ", maxHistoryContentLen+10)
+	history[len(history)-1].Content = long
+
+	req := chatRequest{History: history}
+	normalizeChatRequest(&req)
+
+	if len(req.History) != maxHistoryLen {
+		t.Fatalf("len=%d want %d", len(req.History), maxHistoryLen)
+	}
+	if req.History[0].Content != "turn-"+strings.Repeat("x", 3) {
+		t.Fatalf("kept wrong window start: %q", req.History[0].Content)
+	}
+	last := req.History[len(req.History)-1].Content
+	if utf8.RuneCountInString(last) != maxHistoryContentLen {
+		t.Fatalf("truncated len=%d want %d", utf8.RuneCountInString(last), maxHistoryContentLen)
+	}
+	if !strings.HasSuffix(last, "…") {
+		t.Fatalf("expected ellipsis suffix: %q", last)
+	}
+}
+
+func TestTruncateRunes(t *testing.T) {
+	t.Parallel()
+
+	if got := truncateRunes("hello", 10); got != "hello" {
+		t.Fatalf("short=%q", got)
+	}
+	if got := truncateRunes("hello", 5); got != "hello" {
+		t.Fatalf("exact=%q", got)
+	}
+	if got := truncateRunes("hello", 4); got != "hel…" {
+		t.Fatalf("ascii=%q", got)
+	}
+	if got := truncateRunes("ąćęłń", 3); got != "ąć…" {
+		t.Fatalf("utf8=%q", got)
 	}
 }
 
@@ -246,19 +290,3 @@ func TestWriteSSEFormat(t *testing.T) {
 	}
 }
 
-func historyBodyWithTurns(n int) string {
-	var b strings.Builder
-	b.WriteString(`{"activityId":1,"userId":2,"message":"hi","storageBucket":"b","featuresObjectKey":"k","history":[`)
-	for i := 0; i < n; i++ {
-		if i > 0 {
-			b.WriteByte(',')
-		}
-		role := "athlete"
-		if i%2 == 1 {
-			role = "coach"
-		}
-		b.WriteString(`{"role":"` + role + `","content":"turn"}`)
-	}
-	b.WriteString(`]}`)
-	return b.String()
-}

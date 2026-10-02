@@ -11,6 +11,24 @@ import type {
 } from '@/types/dashboard'
 
 const PENDING_POLL_MS = 3000
+const MAX_CHAT_MESSAGE_LENGTH = 2000
+
+function mapCoachSendError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : 'Could not reach the AI coach.'
+  if (/session expired/i.test(raw)) {
+    return raw
+  }
+  if (/message is too long/i.test(raw)) {
+    return 'Your message is too long. Please shorten it and try again.'
+  }
+  if (/AI coach unavailable/i.test(raw) || /Invalid chat response/i.test(raw)) {
+    return raw
+  }
+  if (/history/i.test(raw)) {
+    return 'Could not reach the AI coach. Please try again.'
+  }
+  return raw
+}
 
 type DashboardState = {
   data: DashboardData | null
@@ -207,6 +225,10 @@ export function useActivityCoach(activityId: string | null) {
         setError('Your session expired. Please sign in again.')
         return
       }
+      if ([...trimmed].length > MAX_CHAT_MESSAGE_LENGTH) {
+        setError('Your message is too long. Please shorten it and try again.')
+        return
+      }
 
       const now = Date.now()
       const optimisticAthleteId = `local_athlete_${now}`
@@ -256,7 +278,7 @@ export function useActivityCoach(activityId: string | null) {
       } catch (err) {
         // Athlete turn is already persisted server-side; drop the streaming coach bubble.
         setMessages((prev) => prev.filter((message) => message.id !== streamingCoachId))
-        setError(err instanceof Error ? err.message : 'Could not reach the AI coach.')
+        setError(mapCoachSendError(err))
       } finally {
         setSending(false)
       }

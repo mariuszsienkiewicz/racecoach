@@ -16,6 +16,7 @@ import (
 )
 
 const maxChatMessageLen = 2000
+const maxHistoryContentLen = 4000
 const maxHistoryLen = 12
 
 // chatRequest is the private Symfony to fit-chat contract.
@@ -173,10 +174,26 @@ func normalizeChatRequest(request *chatRequest) {
 	request.StorageBucket = strings.TrimSpace(request.StorageBucket)
 	request.FeaturesObjectKey = strings.TrimSpace(request.FeaturesObjectKey)
 	request.Summary = strings.TrimSpace(request.Summary)
+
+	if len(request.History) > maxHistoryLen {
+		request.History = request.History[len(request.History)-maxHistoryLen:]
+	}
+
 	for i := range request.History {
 		request.History[i].Role = strings.ToLower(strings.TrimSpace(request.History[i].Role))
-		request.History[i].Content = strings.TrimSpace(request.History[i].Content)
+		request.History[i].Content = truncateRunes(strings.TrimSpace(request.History[i].Content), maxHistoryContentLen)
 	}
+}
+
+func truncateRunes(s string, max int) string {
+	if max <= 0 || utf8.RuneCountInString(s) <= max {
+		return s
+	}
+	if max == 1 {
+		return "…"
+	}
+	runes := []rune(s)
+	return string(runes[:max-1]) + "…"
 }
 
 func validateChatRequest(request chatRequest) error {
@@ -198,9 +215,6 @@ func validateChatRequest(request chatRequest) error {
 	if request.FeaturesObjectKey == "" {
 		return fmt.Errorf("featuresObjectKey is required")
 	}
-	if len(request.History) > maxHistoryLen {
-		return fmt.Errorf("history is too long (max %d messages)", maxHistoryLen)
-	}
 	for _, turn := range request.History {
 		if turn.Role == "" {
 			return fmt.Errorf("history role is required")
@@ -210,9 +224,6 @@ func validateChatRequest(request chatRequest) error {
 		}
 		if turn.Content == "" {
 			return fmt.Errorf("history content is required")
-		}
-		if utf8.RuneCountInString(turn.Content) > maxChatMessageLen {
-			return fmt.Errorf("history content is too long (max %d characters)", maxChatMessageLen)
 		}
 	}
 	return nil
