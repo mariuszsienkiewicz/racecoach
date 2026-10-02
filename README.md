@@ -19,7 +19,7 @@ Local coaching desk for endurance athletes: upload a `.fit` workout, run a Go an
 | Messaging | RabbitMQ (topic exchange + per-stage queues, delayed retry / DLQ on summary) |
 | Object storage | MinIO (S3-compatible) in Docker |
 | Workers | Go services in `workers/` |
-| LLM (optional) | Ollama on the host (`llama3.1:8b` by default) |
+| LLM (optional) | Local: Ollama. AWS demo: OpenAI-compatible host (e.g. OpenRouter) |
 | Dev / CI | Docker Compose; GitHub Actions |
 
 ## Architecture
@@ -61,9 +61,9 @@ Deeper notes: [docs/architecture.md](docs/architecture.md), [docs/messaging-and-
 
 ## Live demo
 
-- **https://racecoach.heaps.pl** - EC2 + RDS + S3 + Caddy HTTPS
+- **https://racecoach.heaps.pl** - EC2 + RDS + S3 + Caddy HTTPS; LLM via OpenRouter (or any OpenAI-compatible API)
 
-Local vs AWS runbooks: [docs/aws-deploy-ec2.md](docs/aws-deploy-ec2.md).
+Local vs AWS (including LLM env): [docs/aws-deploy-ec2.md](docs/aws-deploy-ec2.md).
 
 ## Quick start (local)
 

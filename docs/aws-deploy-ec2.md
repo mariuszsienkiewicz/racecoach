@@ -81,3 +81,34 @@ Demo login (seeded by backend entrypoint): `coach@racecoach.local` / `coach123`.
 | Secrets | Compose defaults / `.env` | `.env.aws` on server only |
 
 Optional on the laptop: a gitignored `docker-compose.override.yml` for pointing local app at RDS/S3 while developing - never required for contributors.
+
+## LLM on AWS (OpenRouter)
+
+Workers speak any **OpenAI-compatible** chat API (`LLM_BASE_URL` + `LLM_MODEL` + `LLM_API_KEY`). Locally that is usually Ollama, on the demo host use a hosted provider so you do not run a GPU.
+
+**Cheap default - [OpenRouter](https://openrouter.ai):**
+
+1. Create an API key (do not commit it).
+2. In server `.env.aws` set:
+
+```bash
+LLM_BASE_URL=https://openrouter.ai/api/v1
+LLM_MODEL=openrouter/free
+LLM_API_KEY=sk-or-v1-...
+```
+
+`openrouter/free` routes to free models ($0 tokens; daily request caps - higher after a small credit top-up). See OpenRouter docs for current limits.
+
+3. Recreate only the LLM workers:
+
+```bash
+docker compose --env-file .env.aws \
+  -f docker-compose.yml -f docker-compose.aws.yml \
+  up -d --force-recreate --no-deps fit-summary fit-chat
+```
+
+**Notes**
+
+- `fit-summary` requests `response_format: json_object`. If a free model rejects that, pick another OpenRouter model that supports JSON (or a cheap paid slug) and keep the same three env vars.
+- Failed summaries land in RabbitMQ queue `fit-summary.dlq`. After fixing `LLM_*`, republish the body to exchange `messages` with routing key `activity.features.ready` and **clear** header `x-retry-count` (see [workers/README.md](../workers/README.md)).
+- Groq or other OpenAI-compatible hosts work the same way - only change `LLM_*`.
