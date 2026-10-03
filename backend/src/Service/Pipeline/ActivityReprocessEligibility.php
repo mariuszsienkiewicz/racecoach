@@ -63,7 +63,7 @@ final class ActivityReprocessEligibility
     public function assertEligible(Activity $activity, ?array $recentIdSet = null): void
     {
         $reason = $this->reason($activity, $recentIdSet);
-        if ('outdated_analysis' === $reason) {
+        if (\in_array($reason, ['outdated_analysis', 'stale_pipeline'], true)) {
             return;
         }
 

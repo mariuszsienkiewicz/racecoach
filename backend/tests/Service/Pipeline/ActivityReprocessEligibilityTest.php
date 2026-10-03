@@ -54,6 +54,7 @@ final class ActivityReprocessEligibilityTest extends TestCase
 
         self::assertTrue($desc['reprocessAvailable']);
         self::assertSame('stale_pipeline', $desc['reprocessReason']);
+        $eligibility->assertEligible($activity, [1 => true]);
     }
 
     public function testAssertEligibleThrowsForCurrent(): void
