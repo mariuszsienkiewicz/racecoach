@@ -15,18 +15,21 @@ final class ActivityReprocessService
     public function __construct(
         private readonly EntityManagerInterface $entityManager,
         private readonly MessageBusInterface $messageBus,
+        private readonly ActivityReprocessEligibility $eligibility,
     ) {
     }
 
     public function reprocess(Activity $activity, ReprocessMode $mode = ReprocessMode::FULL): Activity
     {
-        $this->assertReprocessable($activity, $mode);
+        $this->eligibility->assertEligible($activity);
+        $this->assertPipelineInputs($activity, $mode);
 
         $activity
             ->setStructureObjectKey(null)
             ->setFeaturesObjectKey(null)
             ->setSummaryObjectKey(null)
-            ->setSummary('Queued for analysis.');
+            ->setSummary('Queued for analysis.')
+            ->setAnalysisVersion(null);
 
         if (ReprocessMode::FULL === $mode) {
             $activity
@@ -46,14 +49,8 @@ final class ActivityReprocessService
         return $activity;
     }
 
-    private function assertReprocessable(Activity $activity, ReprocessMode $mode): void
+    private function assertPipelineInputs(Activity $activity, ReprocessMode $mode): void
     {
-        if (null === $activity->getId()) {
-            throw new ActivityCannotReprocessException('Activity must be persisted.');
-        }
-        if (null === $activity->getObjectKey() || '' === $activity->getObjectKey()) {
-            throw new ActivityCannotReprocessException('Activity has no FIT object to reprocess.');
-        }
         if (null === $activity->getStorageBucket() || '' === $activity->getStorageBucket()) {
             throw new ActivityCannotReprocessException('Activity has no storage bucket.');
         }

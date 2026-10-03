@@ -4,6 +4,7 @@ namespace App\Controller;
 
 use App\Entity\Activity;
 use App\Repository\ActivityRepository;
+use App\Service\Pipeline\AnalysisVersions;
 use Doctrine\ORM\EntityManagerInterface;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\JsonResponse;
@@ -177,6 +178,7 @@ final class ActivityMetricsController extends AbstractController
         $activity->setSummaryObjectKey($payload['summaryObjectKey']);
         $activity->setSummary($payload['summary']);
         $activity->setStatus(Activity::STATUS_READY);
+        $activity->setAnalysisVersion(AnalysisVersions::CURRENT);
 
         $entityManager->flush();
 

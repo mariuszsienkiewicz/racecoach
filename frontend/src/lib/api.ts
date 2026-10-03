@@ -147,6 +147,32 @@ export async function uploadFitFile(token: string, file: File): Promise<Activity
   return (await response.json()) as Activity
 }
 
+export async function reprocessActivity(
+  token: string,
+  activityId: string | number,
+  mode: 'full' | 'from_structure' = 'from_structure',
+): Promise<Activity> {
+  const response = await fetch(`${API_BASE}/api/activities/${activityId}/reprocess`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+    },
+    body: JSON.stringify({ mode }),
+  })
+
+  if (response.status === 401) {
+    throw new Error('Your session expired. Please sign in again.')
+  }
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Could not refresh analysis.'))
+  }
+
+  return (await response.json()) as Activity
+}
+
 export async function fetchActivityChat(
   token: string,
   activityId: string | number,

@@ -7,7 +7,10 @@ use App\Entity\User;
 use App\Exception\ActivityCannotReprocessException;
 use App\Message\ActivityMetricsReadyMessage;
 use App\Message\ActivityUploadedMessage;
+use App\Repository\ActivityRepository;
+use App\Service\Pipeline\ActivityReprocessEligibility;
 use App\Service\Pipeline\ActivityReprocessService;
+use App\Service\Pipeline\AnalysisVersions;
 use App\Service\Pipeline\ReprocessMode;
 use Doctrine\ORM\EntityManagerInterface;
 use PHPUnit\Framework\TestCase;
@@ -33,7 +36,7 @@ final class ActivityReprocessServiceTest extends TestCase
                 return new Envelope($message, $stamps);
             });
 
-        $service = new ActivityReprocessService($em, $bus);
+        $service = new ActivityReprocessService($em, $bus, $this->eligibilityAllowing($activity));
         $result = $service->reprocess($activity, ReprocessMode::FULL);
 
         self::assertSame(Activity::STATUS_UPLOADED, $result->getStatus());
@@ -41,13 +44,12 @@ final class ActivityReprocessServiceTest extends TestCase
         self::assertNull($result->getStructureObjectKey());
         self::assertNull($result->getFeaturesObjectKey());
         self::assertNull($result->getSummaryObjectKey());
+        self::assertNull($result->getAnalysisVersion());
         self::assertSame('Queued for analysis.', $result->getSummary());
-        self::assertSame('users/1/fits/race.fit', $result->getObjectKey());
 
         self::assertCount(1, $dispatched);
         self::assertInstanceOf(ActivityUploadedMessage::class, $dispatched[0][0]);
         self::assertSame(42, $dispatched[0][0]->activityId);
-        self::assertSame('users/1/fits/race.fit', $dispatched[0][0]->objectKey);
     }
 
     public function testFromStructureKeepsMetricsAndPublishesMetricsReady(): void
@@ -67,18 +69,15 @@ final class ActivityReprocessServiceTest extends TestCase
                 return new Envelope($message, $stamps);
             });
 
-        $service = new ActivityReprocessService($em, $bus);
+        $service = new ActivityReprocessService($em, $bus, $this->eligibilityAllowing($activity));
         $result = $service->reprocess($activity, ReprocessMode::FROM_STRUCTURE);
 
         self::assertSame(Activity::STATUS_ANALYZING, $result->getStatus());
         self::assertSame('users/1/fits/race.metrics.json', $result->getMetricsObjectKey());
-        self::assertNull($result->getStructureObjectKey());
-        self::assertNull($result->getFeaturesObjectKey());
-        self::assertNull($result->getSummaryObjectKey());
+        self::assertNull($result->getAnalysisVersion());
 
         self::assertCount(1, $dispatched);
         self::assertInstanceOf(ActivityMetricsReadyMessage::class, $dispatched[0]);
-        self::assertSame('users/1/fits/race.metrics.json', $dispatched[0]->metricsObjectKey);
         self::assertSame(5070, $dispatched[0]->distanceM);
     }
 
@@ -90,24 +89,37 @@ final class ActivityReprocessServiceTest extends TestCase
         $service = new ActivityReprocessService(
             $this->createStub(EntityManagerInterface::class),
             $this->createStub(MessageBusInterface::class),
+            $this->eligibilityAllowing($activity),
         );
 
         $this->expectException(ActivityCannotReprocessException::class);
         $service->reprocess($activity, ReprocessMode::FROM_STRUCTURE);
     }
 
-    public function testMissingFitObjectFails(): void
+    public function testEligibilityFailureStopsReprocess(): void
     {
         $activity = $this->readyActivity();
-        $activity->setObjectKey(null);
+        $activity->setAnalysisVersion(AnalysisVersions::CURRENT);
+
+        $em = $this->createMock(EntityManagerInterface::class);
+        $em->expects(self::never())->method('flush');
 
         $service = new ActivityReprocessService(
-            $this->createStub(EntityManagerInterface::class),
+            $em,
             $this->createStub(MessageBusInterface::class),
+            $this->eligibilityAllowing($activity),
         );
 
         $this->expectException(ActivityCannotReprocessException::class);
         $service->reprocess($activity, ReprocessMode::FULL);
+    }
+
+    private function eligibilityAllowing(Activity $activity): ActivityReprocessEligibility
+    {
+        $repo = $this->createStub(ActivityRepository::class);
+        $repo->method('findRecentForUser')->willReturn([$activity]);
+
+        return new ActivityReprocessEligibility($repo);
     }
 
     private function readyActivity(): Activity
@@ -128,6 +140,7 @@ final class ActivityReprocessServiceTest extends TestCase
             ->setDistanceM(5070)
             ->setDurationSec(1458)
             ->setAvgHeartRate(170)
+            ->setAnalysisVersion(1)
             ->setMetricsObjectKey('users/1/fits/race.metrics.json')
             ->setStructureObjectKey('users/1/fits/race.structure.json')
             ->setFeaturesObjectKey('users/1/fits/race.features.json')

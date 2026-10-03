@@ -13,7 +13,8 @@ import type { Activity } from '@/types/dashboard'
 import { Button } from '@/components/ui/button'
 
 export function DashboardPage() {
-  const { data, loading, refreshing, error, refresh, uploadFit } = useDashboard()
+  const { data, loading, refreshing, error, refresh, uploadFit, reprocessActivity } =
+    useDashboard()
   const [selectedDate, setSelectedDate] = useState<string | null>(null)
   const [coachActivity, setCoachActivity] = useState<Activity | null>(null)
 
@@ -70,7 +71,11 @@ export function DashboardPage() {
               selectedDate={selectedDate}
               onSelectDate={setSelectedDate}
             />
-            <ActivityFeed activities={filteredActivities} onAskAi={setCoachActivity} />
+            <ActivityFeed
+              activities={filteredActivities}
+              onAskAi={setCoachActivity}
+              onReprocess={reprocessActivity}
+            />
           </div>
 
           <div className="space-y-8">

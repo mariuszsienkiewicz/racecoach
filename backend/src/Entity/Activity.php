@@ -115,6 +115,9 @@ class Activity
     #[ORM\Column(length: 64, nullable: true)]
     private ?string $checksumSha256 = null;
 
+    #[ORM\Column(nullable: true)]
+    private ?int $analysisVersion = null;
+
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
@@ -398,6 +401,18 @@ class Activity
         return $this;
     }
 
+    public function getAnalysisVersion(): ?int
+    {
+        return $this->analysisVersion;
+    }
+
+    public function setAnalysisVersion(?int $analysisVersion): static
+    {
+        $this->analysisVersion = $analysisVersion;
+
+        return $this;
+    }
+
     public function getCreatedAt(): \DateTimeImmutable
     {
         return $this->createdAt;
@@ -442,6 +457,7 @@ class Activity
             'featuresObjectKey' => $this->featuresObjectKey,
             'summaryObjectKey' => $this->summaryObjectKey,
             'checksumSha256' => $this->checksumSha256,
+            'analysisVersion' => $this->analysisVersion,
         ];
     }
 }

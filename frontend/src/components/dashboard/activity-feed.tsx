@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { MessageSquare } from 'lucide-react'
+import { MessageSquare, RefreshCw } from 'lucide-react'
 
 import { StatusBadge, typeLabel } from '@/components/dashboard/status-badge'
 import { Button } from '@/components/ui/button'
@@ -15,6 +15,7 @@ import type { Activity } from '@/types/dashboard'
 type ActivityFeedProps = {
   activities: Activity[]
   onAskAi: (activity: Activity) => void
+  onReprocess?: (activityId: string) => Promise<void>
 }
 
 const REVIEW_MESSAGES = [
@@ -127,9 +128,11 @@ function CoachInsight({ summary, animateIn }: { summary: string; animateIn: bool
 function ActivityRow({
   activity,
   onAskAi,
+  onReprocess,
 }: {
   activity: Activity
   onAskAi: (activity: Activity) => void
+  onReprocess?: (activityId: string) => Promise<void>
 }) {
   const ready = activity.status === 'ready'
   const pending = isPending(activity.status)
@@ -137,6 +140,8 @@ function ActivityRow({
   const prevStatus = useRef(activity.status)
   const [justReady, setJustReady] = useState(false)
   const [metricsReveal, setMetricsReveal] = useState(hasMetrics)
+  const [reprocessing, setReprocessing] = useState(false)
+  const [reprocessError, setReprocessError] = useState<string | null>(null)
 
   useEffect(() => {
     if (prevStatus.current !== 'ready' && activity.status === 'ready') {
@@ -224,6 +229,42 @@ function ActivityRow({
             Session is ready. Ask the AI coach for a deeper debrief.
           </p>
         ) : null}
+
+        {activity.reprocessAvailable ? (
+          <div className="space-y-2 rounded-2xl bg-secondary/40 px-3 py-3">
+            <p className="text-sm text-foreground/85">
+              Newer analysis is available, refresh for better pace splits and AI feedback.
+            </p>
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              disabled={reprocessing || !onReprocess}
+              onClick={() => {
+                if (!onReprocess) {
+                  return
+                }
+                setReprocessError(null)
+                setReprocessing(true)
+                void onReprocess(activity.id)
+                  .catch((err) => {
+                    setReprocessError(
+                      err instanceof Error ? err.message : 'Could not refresh analysis.',
+                    )
+                  })
+                  .finally(() => setReprocessing(false))
+              }}
+            >
+              <RefreshCw className={cn('h-3.5 w-3.5', reprocessing && 'animate-spin')} />
+              {reprocessing ? 'Refreshing…' : 'Refresh analysis'}
+            </Button>
+            {reprocessError ? (
+              <p className="text-xs text-destructive" role="alert">
+                {reprocessError}
+              </p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       <div className="lg:pt-1">
@@ -246,7 +287,7 @@ function ActivityRow({
   )
 }
 
-export function ActivityFeed({ activities, onAskAi }: ActivityFeedProps) {
+export function ActivityFeed({ activities, onAskAi, onReprocess }: ActivityFeedProps) {
   return (
     <section className="rounded-3xl border border-border/70 bg-background/75 p-6 backdrop-blur sm:p-8">
       <div className="flex items-end justify-between gap-4">
@@ -266,7 +307,12 @@ export function ActivityFeed({ activities, onAskAi }: ActivityFeedProps) {
           </p>
         ) : (
           activities.map((activity) => (
-            <ActivityRow key={activity.id} activity={activity} onAskAi={onAskAi} />
+            <ActivityRow
+              key={activity.id}
+              activity={activity}
+              onAskAi={onAskAi}
+              onReprocess={onReprocess}
+            />
           ))
         )}
       </div>

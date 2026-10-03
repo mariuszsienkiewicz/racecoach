@@ -6,6 +6,7 @@ use App\Entity\Activity;
 use App\Entity\User;
 use App\Exception\ActivityCannotReprocessException;
 use App\Repository\ActivityRepository;
+use App\Service\Pipeline\ActivityApiPresenter;
 use App\Service\Pipeline\ActivityReprocessService;
 use App\Service\Pipeline\ReprocessMode;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
@@ -22,6 +23,7 @@ final class ActivityReprocessController extends AbstractController
     public function __construct(
         private readonly ActivityRepository $activityRepository,
         private readonly ActivityReprocessService $activityReprocessService,
+        private readonly ActivityApiPresenter $activityApiPresenter,
     ) {
     }
 
@@ -57,7 +59,7 @@ final class ActivityReprocessController extends AbstractController
             return $this->json(['message' => $exception->getMessage()], Response::HTTP_CONFLICT);
         }
 
-        return $this->json($activity->toApiArray(), Response::HTTP_ACCEPTED);
+        return $this->json($this->activityApiPresenter->present($activity), Response::HTTP_ACCEPTED);
     }
 
     private function findOwnedActivity(int $id, User $user): ?Activity
@@ -70,11 +72,6 @@ final class ActivityReprocessController extends AbstractController
         return $activity;
     }
 
-    /**
-     * Body optional. Default mode=full.
-     *
-     * @throws \InvalidArgumentException when JSON/mode is invalid
-     */
     private function parseMode(Request $request): ReprocessMode
     {
         $raw = $request->getContent();
