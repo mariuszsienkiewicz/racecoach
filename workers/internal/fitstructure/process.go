@@ -60,6 +60,9 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 			lap.Index, lap.DistanceM, lap.DurationSec, derefInt(lap.AvgPaceSecPerKm), derefInt(lap.AvgHeartRate), derefInt(lap.MaxHeartRate), lap.LapTrigger,
 		)
 	}
+	if len(parsed.Laps) > 0 && parsed.Laps[0].LapTrigger == "synthetic_km" {
+		log.Printf("activity=%d using synthetic 1km splits (device laps were empty or single-lap)", ev.ActivityID)
+	}
 
 	artifact := domain.ActivityStructure{
 		ActivityID:    ev.ActivityID,

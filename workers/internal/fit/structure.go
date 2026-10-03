@@ -45,7 +45,12 @@ func ParseStructure(data []byte) (Structure, error) {
 		out.Laps = append(out.Laps, mapLap(i, raw))
 	}
 
-	// Zero laps is valid (easy runs / activities without auto-lap)
+	if needsSyntheticKmSplits(out.Laps) {
+		if synth := buildSyntheticKmLaps(activity.Records); len(synth) >= 2 {
+			out.Laps = synth
+		}
+	}
+
 	return out, nil
 }
 
