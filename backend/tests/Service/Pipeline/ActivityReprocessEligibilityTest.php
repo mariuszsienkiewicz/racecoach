@@ -45,6 +45,17 @@ final class ActivityReprocessEligibilityTest extends TestCase
         self::assertSame('outside_window', $desc['reprocessReason']);
     }
 
+    public function testStuckAnalyzingIsAvailable(): void
+    {
+        $activity = $this->activity(status: Activity::STATUS_ANALYZING, version: null, id: 1);
+        $eligibility = new ActivityReprocessEligibility($this->createStub(ActivityRepository::class));
+
+        $desc = $eligibility->describe($activity, [1 => true]);
+
+        self::assertTrue($desc['reprocessAvailable']);
+        self::assertSame('stale_pipeline', $desc['reprocessReason']);
+    }
+
     public function testAssertEligibleThrowsForCurrent(): void
     {
         $activity = $this->activity(status: Activity::STATUS_READY, version: AnalysisVersions::CURRENT, id: 1);

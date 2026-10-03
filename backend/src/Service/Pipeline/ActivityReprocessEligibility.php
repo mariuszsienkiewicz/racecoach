@@ -24,7 +24,7 @@ final class ActivityReprocessEligibility
         $reason = $this->reason($activity, $recentIdSet);
 
         return [
-            'reprocessAvailable' => 'outdated_analysis' === $reason,
+            'reprocessAvailable' => \in_array($reason, ['outdated_analysis', 'stale_pipeline'], true),
             'reprocessReason' => $reason,
         ];
     }
@@ -80,14 +80,6 @@ final class ActivityReprocessEligibility
         if (null === $activity->getObjectKey() || '' === $activity->getObjectKey()) {
             return 'missing_fit';
         }
-        if (Activity::STATUS_READY !== $activity->getStatus()) {
-            return 'not_ready';
-        }
-
-        $version = $activity->getAnalysisVersion() ?? 0;
-        if ($version >= AnalysisVersions::CURRENT) {
-            return 'already_current';
-        }
 
         $id = $activity->getId();
         if (null === $id) {
@@ -97,6 +89,19 @@ final class ActivityReprocessEligibility
         $window = $recentIdSet ?? $this->recentIdSetForUser($activity->getUser());
         if (!isset($window[$id])) {
             return 'outside_window';
+        }
+
+        $status = $activity->getStatus();
+        if (\in_array($status, [Activity::STATUS_ANALYZING, Activity::STATUS_UPLOADED, Activity::STATUS_FAILED], true)) {
+            return 'stale_pipeline';
+        }
+        if (Activity::STATUS_READY !== $status) {
+            return 'not_ready';
+        }
+
+        $version = $activity->getAnalysisVersion() ?? 0;
+        if ($version >= AnalysisVersions::CURRENT) {
+            return 'already_current';
         }
 
         return 'outdated_analysis';

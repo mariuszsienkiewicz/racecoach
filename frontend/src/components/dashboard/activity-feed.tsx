@@ -233,7 +233,9 @@ function ActivityRow({
         {activity.reprocessAvailable ? (
           <div className="space-y-2 rounded-2xl bg-secondary/40 px-3 py-3">
             <p className="text-sm text-foreground/85">
-              Newer analysis is available, refresh for better pace splits and AI feedback.
+              {activity.reprocessReason === 'stale_pipeline'
+                ? 'Analysis got stuck, refresh to finish processing this session.'
+                : 'Newer analysis is available, refresh for better pace splits and AI feedback.'}
             </p>
             <Button
               type="button"
