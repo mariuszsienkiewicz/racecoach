@@ -115,3 +115,29 @@ func TestConsumeCompletionStreamInvalidJSON(t *testing.T) {
 		t.Fatal("expected unmarshal error")
 	}
 }
+
+func TestIsRetryable(t *testing.T) {
+	t.Parallel()
+
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{name: "429", err: &HTTPError{StatusCode: 429}, want: true},
+		{name: "503", err: &HTTPError{StatusCode: 503}, want: true},
+		{name: "408", err: &HTTPError{StatusCode: 408}, want: true},
+		{name: "404", err: &HTTPError{StatusCode: 404}, want: false},
+		{name: "401", err: &HTTPError{StatusCode: 401}, want: false},
+		{name: "400", err: &HTTPError{StatusCode: 400}, want: false},
+		{name: "network", err: context.DeadlineExceeded, want: true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if got := IsRetryable(tc.err); got != tc.want {
+				t.Fatalf("IsRetryable(%v)=%v want %v", tc.err, got, tc.want)
+			}
+		})
+	}
+}

@@ -270,11 +270,16 @@ func (e *HTTPError) Error() string {
 	return fmt.Sprintf("api status %d: %s", e.StatusCode, e.Body)
 }
 
-// IsRetryable reports whether the caller should Nack(requeue=true)
+// IsRetryable: 408/429/5xx and transport errors retry; other 4xx do not.
 func IsRetryable(err error) bool {
 	var httpErr *HTTPError
 	if errors.As(err, &httpErr) {
-		return httpErr.StatusCode >= 500
+		switch httpErr.StatusCode {
+		case http.StatusRequestTimeout, http.StatusTooManyRequests:
+			return true
+		default:
+			return httpErr.StatusCode >= 500
+		}
 	}
 	return true
 }

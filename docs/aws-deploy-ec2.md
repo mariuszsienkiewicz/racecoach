@@ -110,5 +110,5 @@ docker compose --env-file .env.aws \
 **Notes**
 
 - `fit-summary` requests `response_format: json_object`. If a free model rejects that, pick another OpenRouter model that supports JSON (or a cheap paid slug) and keep the same three env vars.
-- Failed summaries land in RabbitMQ queue `fit-summary.dlq`. After fixing `LLM_*`, republish the body to exchange `messages` with routing key `activity.features.ready` and **clear** header `x-retry-count` (see [workers/README.md](../workers/README.md)).
+- Failed summaries land in RabbitMQ queue `fit-summary.dlq` (invalid JSON retries a few times first, bad model/auth 404 goes straight to DLQ). After fixing `LLM_*`, republish the body to exchange `messages` with routing key `activity.features.ready` and **clear** header `x-retry-count` (see [workers/README.md](../workers/README.md)).
 - Groq or other OpenAI-compatible hosts work the same way - only change `LLM_*`.

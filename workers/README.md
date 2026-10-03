@@ -91,7 +91,7 @@ Accept: `text/event-stream`.
 | Stage | Retryable (API / MinIO / publish) | LLM down / bad JSON |
 | --- | --- | --- |
 | metrics -> features | `RequeueAfterBackoff` (~30s) then Nack(requeue) | n/a |
-| summary | TTL queue `fit-summary.retry.30s` (DLX back to `activity.features.ready`), header `x-retry-count`, max **5** delayed attempts -> `fit-summary.dlq` | retryable LLM -> same delayed path; non-retryable / invalid JSON -> Reject |
+| summary | TTL queue `fit-summary.retry.30s` (DLX back to `activity.features.ready`), header `x-retry-count`, max **5** delayed attempts -> `fit-summary.dlq` | 429/5xx, timeouts, invalid/empty LLM JSON -> delayed retry then DLQ; 401/403/404 (bad key/model) -> DLQ immediately |
 
 ## Layout
 

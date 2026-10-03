@@ -84,8 +84,7 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 	if err != nil {
 		err = fmt.Errorf("generate summary: %w", err)
 		if !llm.IsRetryable(err) {
-			amqp.Reject(d)
-			return err
+			return sendToDLQ(ctx, ch, d, err)
 		}
 		return scheduleRetry(ctx, ch, d, err)
 	}
@@ -97,12 +96,10 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 			preview = preview[:280] + "..."
 		}
 		log.Printf("activity=%d invalid LLM JSON preview=%q", ev.ActivityID, preview)
-		amqp.Reject(d)
-		return fmt.Errorf("unmarshal summary prompt response JSON: %w", err)
+		return scheduleRetry(ctx, ch, d, fmt.Errorf("unmarshal summary prompt response JSON: %w", err))
 	}
 	if strings.TrimSpace(coach.Summary) == "" {
-		amqp.Reject(d)
-		return fmt.Errorf("empty summary from LLM")
+		return scheduleRetry(ctx, ch, d, fmt.Errorf("empty summary from LLM"))
 	}
 
 	artifact := domain.ActivitySummary{
