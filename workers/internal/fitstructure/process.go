@@ -66,7 +66,7 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 
 	artifact := domain.ActivityStructure{
 		ActivityID:    ev.ActivityID,
-		SchemaVersion: 1,
+		SchemaVersion: 2,
 		ObjectKey:     ev.ObjectKey,
 		Laps:          parsed.Laps,
 	}

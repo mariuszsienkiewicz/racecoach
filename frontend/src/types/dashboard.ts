@@ -4,6 +4,13 @@ export type ActivityStatus = 'uploaded' | 'analyzing' | 'ready' | 'failed'
 
 export type ActivityType = 'easy' | 'tempo' | 'intervals' | 'long_run' | 'recovery' | 'race'
 
+export type ReprocessReason =
+  | 'outdated_analysis'
+  | 'already_current'
+  | 'outside_window'
+  | 'not_ready'
+  | 'missing_fit'
+
 export type Activity = {
   id: string
   title: string
@@ -18,6 +25,9 @@ export type Activity = {
   elevationGainM: number | null
   summary: string | null
   metricsObjectKey?: string | null
+  analysisVersion?: number | null
+  reprocessAvailable?: boolean
+  reprocessReason?: ReprocessReason | null
 }
 
 export type WeekSummary = {

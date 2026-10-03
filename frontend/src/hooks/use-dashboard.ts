@@ -39,6 +39,7 @@ type DashboardState = {
   addActivity: (activity: Activity) => void
   upsertDevice: (device: DeviceConnection) => void
   uploadFit: (file: File) => Promise<Activity>
+  reprocessActivity: (activityId: string) => Promise<void>
   connectProvider: (provider: DeviceConnection['provider']) => Promise<void>
 }
 
@@ -147,6 +148,17 @@ export function useDashboard(): DashboardState {
     [addActivity, token],
   )
 
+  const reprocessActivity = useCallback(
+    async (activityId: string) => {
+      if (!token) {
+        throw new Error('Your session expired. Please sign in again.')
+      }
+      const activity = await dashboardService.reprocessActivity(token, activityId)
+      addActivity(activity)
+    },
+    [addActivity, token],
+  )
+
   const connectProvider = useCallback(
     async (provider: DeviceConnection['provider']) => {
       const device = await dashboardService.connectDevice(provider)
@@ -164,6 +176,7 @@ export function useDashboard(): DashboardState {
     addActivity,
     upsertDevice,
     uploadFit,
+    reprocessActivity,
     connectProvider,
   }
 }

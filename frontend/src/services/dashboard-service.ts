@@ -3,6 +3,7 @@ import {
   fetchActivities,
   fetchActivityChat,
   postActivityChat,
+  reprocessActivity as reprocessActivityApi,
   uploadFitFile as uploadFitFileApi,
 } from '@/lib/api'
 import { buildWeekSummary } from '@/lib/week-summary'
@@ -48,6 +49,10 @@ export async function askCoach(
 
 export async function uploadFitFile(token: string, file: File): Promise<Activity> {
   return uploadFitFileApi(token, file)
+}
+
+export async function reprocessActivity(token: string, activityId: string): Promise<Activity> {
+  return reprocessActivityApi(token, activityId, 'from_structure')
 }
 
 export async function connectDevice(
