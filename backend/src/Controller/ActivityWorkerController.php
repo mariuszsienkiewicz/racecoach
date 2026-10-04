@@ -69,6 +69,21 @@ final class ActivityWorkerController extends AbstractController
             $activity->setMetricsObjectKey(\is_string($key) ? $key : null);
         }
 
+        if (\array_key_exists('title', $payload) && \is_string($payload['title'])) {
+            $title = trim($payload['title']);
+            if ('' !== $title) {
+                $activity->setTitle(mb_substr($title, 0, 180));
+            }
+        }
+
+        if (\array_key_exists('startedAt', $payload) && \is_string($payload['startedAt']) && '' !== $payload['startedAt']) {
+            try {
+                $activity->setStartedAt(new \DateTimeImmutable($payload['startedAt']));
+            } catch (\Exception) {
+                return $this->json(['message' => 'Invalid startedAt'], Response::HTTP_BAD_REQUEST);
+            }
+        }
+
         $this->entityManager->flush();
 
         return $this->json($activity->toApiArray());
@@ -134,6 +149,13 @@ final class ActivityWorkerController extends AbstractController
         $activity->setStatus(Activity::STATUS_ANALYZING);
         $activity->setFeaturesObjectKey($payload['featuresObjectKey']);
         $activity->touchPipelineHeartbeat();
+
+        if (\array_key_exists('type', $payload)) {
+            if (!\is_string($payload['type']) || !\in_array($payload['type'], Activity::TYPES, true)) {
+                return $this->json(['message' => 'Invalid type'], Response::HTTP_BAD_REQUEST);
+            }
+            $activity->setType($payload['type']);
+        }
 
         $this->entityManager->flush();
 

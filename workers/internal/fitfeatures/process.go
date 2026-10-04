@@ -88,7 +88,10 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 		featuresKey, len(featuresBody), features.Signals.SuspectedWorkoutShape, features.Overview.LapCount,
 	)
 
-	if err := apiClient.PatchActivityFeatures(ctx, ev.ActivityID, domain.PatchActivityFeaturesRequest{FeaturesObjectKey: featuresKey}); err != nil {
+	if err := apiClient.PatchActivityFeatures(ctx, ev.ActivityID, domain.PatchActivityFeaturesRequest{
+		FeaturesObjectKey: featuresKey,
+		Type:              ClassifyActivityType(features),
+	}); err != nil {
 		return amqp.MaybeRequeue(ctx, d, api.IsRetryable(err), fmt.Errorf("patch activity features: %w", err))
 	}
 	log.Printf("patched activity features for activity=%d", ev.ActivityID)

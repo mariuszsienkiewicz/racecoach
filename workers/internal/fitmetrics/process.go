@@ -89,9 +89,13 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 		DurationSec:  parsed.DurationSec,
 		AvgHeartRate: parsed.AvgHeartRate,
 		MaxHeartRate: parsed.MaxHeartRate,
+		Title:        parsed.Title,
 	}
-	log.Printf("metrics: activity=%d distanceM=%d durationSec=%d avgHR=%v maxHR=%v",
-		artifact.ActivityID, artifact.DistanceM, artifact.DurationSec, artifact.AvgHeartRate, artifact.MaxHeartRate)
+	if parsed.StartedAt != nil {
+		artifact.StartedAt = parsed.StartedAt.UTC().Format(time.RFC3339)
+	}
+	log.Printf("metrics: activity=%d title=%q startedAt=%s distanceM=%d durationSec=%d avgHR=%v maxHR=%v",
+		artifact.ActivityID, artifact.Title, artifact.StartedAt, artifact.DistanceM, artifact.DurationSec, artifact.AvgHeartRate, artifact.MaxHeartRate)
 
 	metricsKey := strings.TrimSuffix(ap.ObjectKey, ".fit") + ".metrics.json"
 	artifact.MetricsObjectKey = metricsKey

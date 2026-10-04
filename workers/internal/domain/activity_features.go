@@ -185,6 +185,7 @@ type FeaturesSignalsDisplay struct {
 // PatchActivityFeaturesRequest is the JSON payload for the PATCH endpoint.
 type PatchActivityFeaturesRequest struct {
 	FeaturesObjectKey string `json:"featuresObjectKey"`
+	Type              string `json:"type,omitempty"`
 }
 
 // ActivityFeaturesReady is published after features are stored.

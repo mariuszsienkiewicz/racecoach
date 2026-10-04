@@ -27,6 +27,7 @@ export type Activity = {
   elevationGainM: number | null
   summary: string | null
   metricsObjectKey?: string | null
+  featuresObjectKey?: string | null
   analysisVersion?: number | null
   reprocessAvailable?: boolean
   reprocessReason?: ReprocessReason | null

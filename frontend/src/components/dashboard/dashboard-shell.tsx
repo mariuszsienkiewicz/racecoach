@@ -52,9 +52,6 @@ export function DashboardShell({ children }: DashboardShellProps) {
             <div className="mt-10 border-t border-border/70 pt-6">
               <p className="truncate text-sm font-medium">{user?.email}</p>
               <div className="mt-4 flex flex-col gap-2">
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/">Marketing site</Link>
-                </Button>
                 <Button variant="ghost" size="sm" onClick={logout}>
                   Log out
                 </Button>

@@ -7,6 +7,8 @@ type ActivityMetrics struct {
 	DurationSec      int    `json:"durationSec"`
 	AvgHeartRate     *int   `json:"avgHeartRate"`
 	MaxHeartRate     *int   `json:"maxHeartRate,omitempty"`
+	Title            string `json:"title,omitempty"`
+	StartedAt        string `json:"startedAt,omitempty"` // RFC3339 UTC from FIT session
 	MetricsObjectKey string `json:"metricsObjectKey,omitempty"`
 }
 

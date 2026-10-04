@@ -181,9 +181,11 @@ function ActivityRow({
           <div className="flex flex-wrap items-center gap-2.5">
             <h3 className="font-display text-lg font-semibold tracking-tight">{activity.title}</h3>
             <StatusBadge status={activity.status} />
-            <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
-              {typeLabel(activity.type)}
-            </span>
+            {ready || activity.featuresObjectKey ? (
+              <span className="rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-secondary-foreground">
+                {typeLabel(activity.type)}
+              </span>
+            ) : null}
           </div>
           <p className="text-sm text-muted-foreground">
             {formatActivityDate(activity.startedAt)} · {activity.source.replaceAll('_', ' ')}

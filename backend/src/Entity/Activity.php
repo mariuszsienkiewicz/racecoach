@@ -20,6 +20,21 @@ class Activity
     public const STATUS_READY = 'ready';
     public const STATUS_FAILED = 'failed';
     public const TYPE_EASY = 'easy';
+    public const TYPE_TEMPO = 'tempo';
+    public const TYPE_INTERVALS = 'intervals';
+    public const TYPE_LONG_RUN = 'long_run';
+    public const TYPE_RECOVERY = 'recovery';
+    public const TYPE_RACE = 'race';
+
+    /** @var list<string> */
+    public const TYPES = [
+        self::TYPE_EASY,
+        self::TYPE_TEMPO,
+        self::TYPE_INTERVALS,
+        self::TYPE_LONG_RUN,
+        self::TYPE_RECOVERY,
+        self::TYPE_RACE,
+    ];
 
     #[ORM\Id]
     #[ORM\GeneratedValue]
