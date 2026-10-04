@@ -33,7 +33,7 @@ exit(1);
 '
 
 php bin/console doctrine:database:create --if-not-exists --no-interaction || true
-php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration || php bin/console doctrine:schema:update --force --no-interaction
+php bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration
 php bin/console app:create-user "${DEMO_USER_EMAIL:-coach@racecoach.local}" "${DEMO_USER_PASSWORD:-coach123}" || true
 
 exec "$@"
