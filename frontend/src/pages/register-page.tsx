@@ -7,11 +7,12 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useAuth } from '@/context/auth-context'
 
-export function LoginPage() {
-  const { login, user, loading } = useAuth()
+export function RegisterPage() {
+  const { register, user, loading } = useAuth()
   const navigate = useNavigate()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
 
@@ -22,13 +23,24 @@ export function LoginPage() {
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setError(null)
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.')
+      return
+    }
+
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters.')
+      return
+    }
+
     setSubmitting(true)
 
     try {
-      await login(email, password)
+      await register(email, password)
       navigate('/dashboard')
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.')
+      setError(err instanceof Error ? err.message : 'Could not create your account.')
     } finally {
       setSubmitting(false)
     }
@@ -47,9 +59,9 @@ export function LoginPage() {
 
         <Card className="border-border/70 bg-card/90 backdrop-blur">
           <CardHeader>
-            <CardTitle className="font-display">Sign in</CardTitle>
+            <CardTitle className="font-display">Create account</CardTitle>
             <CardDescription>
-              Open your coaching desk, calendar, imports, weekly plan, and AI coach.
+              Start your coaching desk, upload runs, review analysis, and chat with your AI coach.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -59,7 +71,7 @@ export function LoginPage() {
                 <Input
                   id="email"
                   type="email"
-                  autoComplete="username"
+                  autoComplete="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   required
@@ -70,26 +82,34 @@ export function LoginPage() {
                 <Input
                   id="password"
                   type="password"
-                  autoComplete="current-password"
+                  autoComplete="new-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   required
+                  minLength={8}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm password</Label>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(event) => setConfirmPassword(event.target.value)}
+                  required
+                  minLength={8}
                 />
               </div>
               {error ? <p className="text-sm text-destructive">{error}</p> : null}
               <Button className="w-full" type="submit" disabled={submitting}>
-                {submitting ? 'Signing in…' : 'Sign in'}
+                {submitting ? 'Creating account…' : 'Create account'}
               </Button>
             </form>
             <p className="mt-4 text-center text-sm text-muted-foreground">
-              No account yet?{' '}
-              <Link className="underline underline-offset-4 hover:text-foreground" to="/register">
-                Create one
-              </Link>
-            </p>
-            <p className="mt-2 text-center text-sm text-muted-foreground">
-              <Link className="underline underline-offset-4 hover:text-foreground" to="/">
-                Back to homepage
+              Already have an account?{' '}
+              <Link className="underline underline-offset-4 hover:text-foreground" to="/login">
+                Sign in
               </Link>
             </p>
           </CardContent>

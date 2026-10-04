@@ -60,7 +60,7 @@ export function FinalCtaSection() {
           </p>
           <div className="mt-8 flex flex-wrap gap-3 sm:justify-center">
             <Button asChild size="lg">
-              <Link to="/login">Open RaceCoach</Link>
+              <Link to="/register">Open RaceCoach</Link>
             </Button>
             <Button asChild size="lg" variant="outline">
               <a href="#sync">Explore the product</a>

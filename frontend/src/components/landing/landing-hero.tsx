@@ -59,7 +59,7 @@ function HeroTrailVisual() {
 
 export function LandingHero() {
   const { user } = useAuth()
-  const primaryHref = user ? '/dashboard' : '/login'
+  const primaryHref = user ? '/dashboard' : '/register'
   const primaryLabel = user ? 'Open dashboard' : 'Start coaching'
 
   return (

@@ -91,6 +91,25 @@ export async function login(email: string, password: string): Promise<string> {
   return data.token
 }
 
+export async function register(email: string, password: string): Promise<string> {
+  const response = await fetch(`${API_BASE}/api/register`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  })
+
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Could not create your account.'))
+  }
+
+  const data = (await response.json()) as LoginResponse
+  if (typeof data.token !== 'string' || data.token === '') {
+    throw new Error('Could not create your account.')
+  }
+
+  return data.token
+}
+
 export async function fetchMe(token: string): Promise<AuthUser> {
   const response = await fetch(`${API_BASE}/api/me`, {
     headers: { Authorization: `Bearer ${token}` },

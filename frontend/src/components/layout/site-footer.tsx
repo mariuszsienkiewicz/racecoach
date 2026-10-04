@@ -17,6 +17,7 @@ const footerColumns = [
       { href: '#sync', label: '.FIT uploads' },
       { href: '#plans', label: 'Race prep' },
       { href: '/login', label: 'Athlete login', isRoute: true },
+      { href: '/register', label: 'Create account', isRoute: true },
     ],
   },
   {

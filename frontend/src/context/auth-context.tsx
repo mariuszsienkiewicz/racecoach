@@ -8,7 +8,12 @@ import {
   type ReactNode,
 } from 'react'
 
-import { fetchMe, login as apiLogin, type AuthUser } from '@/lib/api'
+import {
+  fetchMe,
+  login as apiLogin,
+  register as apiRegister,
+  type AuthUser,
+} from '@/lib/api'
 
 const TOKEN_KEY = 'racecoach_token'
 
@@ -17,6 +22,7 @@ type AuthContextValue = {
   token: string | null
   loading: boolean
   login: (email: string, password: string) => Promise<void>
+  register: (email: string, password: string) => Promise<void>
   logout: () => void
 }
 
@@ -61,13 +67,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [token])
 
-  const login = useCallback(async (email: string, password: string) => {
-    const nextToken = await apiLogin(email, password)
+  const establishSession = useCallback(async (nextToken: string) => {
     localStorage.setItem(TOKEN_KEY, nextToken)
     setToken(nextToken)
     const me = await fetchMe(nextToken)
     setUser(me)
   }, [])
+
+  const login = useCallback(
+    async (email: string, password: string) => {
+      const nextToken = await apiLogin(email, password)
+      await establishSession(nextToken)
+    },
+    [establishSession],
+  )
+
+  const register = useCallback(
+    async (email: string, password: string) => {
+      const nextToken = await apiRegister(email, password)
+      await establishSession(nextToken)
+    },
+    [establishSession],
+  )
 
   const logout = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
@@ -76,8 +97,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo(
-    () => ({ user, token, loading, login, logout }),
-    [user, token, loading, login, logout],
+    () => ({ user, token, loading, login, register, logout }),
+    [user, token, loading, login, register, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

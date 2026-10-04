@@ -61,7 +61,7 @@ export function SiteHeader({ className }: SiteHeaderProps) {
               <Link to="/login">Sign in</Link>
             </Button>
             <Button asChild>
-              <Link to="/login">Get started</Link>
+              <Link to="/register">Get started</Link>
             </Button>
           </>
         )}
