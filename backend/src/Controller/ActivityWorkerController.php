@@ -13,22 +13,27 @@ use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\Routing\Attribute\Route;
 use Symfony\Component\Security\Http\Attribute\IsGranted;
 
+/**
+ * Machine-to-machine pipeline callbacks (X-Worker-Token).
+ */
 #[IsGranted('ROLE_WORKER')]
-final class ActivityMetricsController extends AbstractController
+final class ActivityWorkerController extends AbstractController
 {
+    public function __construct(
+        private readonly ActivityRepository $activityRepository,
+        private readonly EntityManagerInterface $entityManager,
+    ) {
+    }
+
     #[Route(
         '/api/activities/{id}/metrics',
         name: 'api_activities_metrics_update',
         methods: ['PATCH'],
         requirements: ['id' => '\d+'],
     )]
-    public function updateMetrics(
-        int $id,
-        Request $request,
-        ActivityRepository $activityRepository,
-        EntityManagerInterface $entityManager,
-    ): JsonResponse {
-        $activity = $activityRepository->find($id);
+    public function updateMetrics(int $id, Request $request): JsonResponse
+    {
+        $activity = $this->findActivity($id);
         if (!$activity instanceof Activity) {
             return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
         }
@@ -64,7 +69,7 @@ final class ActivityMetricsController extends AbstractController
             $activity->setMetricsObjectKey(\is_string($key) ? $key : null);
         }
 
-        $entityManager->flush();
+        $this->entityManager->flush();
 
         return $this->json($activity->toApiArray());
     }
@@ -75,13 +80,9 @@ final class ActivityMetricsController extends AbstractController
         methods: ['PATCH'],
         requirements: ['id' => '\d+'],
     )]
-    public function updateStructure(
-        int $id,
-        Request $request,
-        ActivityRepository $activityRepository,
-        EntityManagerInterface $entityManager,
-    ): JsonResponse {
-        $activity = $activityRepository->find($id);
+    public function updateStructure(int $id, Request $request): JsonResponse
+    {
+        $activity = $this->findActivity($id);
         if (!$activity instanceof Activity) {
             return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
         }
@@ -101,7 +102,7 @@ final class ActivityMetricsController extends AbstractController
         $activity->setStructureObjectKey($payload['structureObjectKey']);
         $activity->touchPipelineHeartbeat();
 
-        $entityManager->flush();
+        $this->entityManager->flush();
 
         return $this->json($activity->toApiArray());
     }
@@ -112,13 +113,9 @@ final class ActivityMetricsController extends AbstractController
         methods: ['PATCH'],
         requirements: ['id' => '\d+'],
     )]
-    public function updateFeatures(
-        int $id,
-        Request $request,
-        ActivityRepository $activityRepository,
-        EntityManagerInterface $entityManager,
-    ): JsonResponse {
-        $activity = $activityRepository->find($id);
+    public function updateFeatures(int $id, Request $request): JsonResponse
+    {
+        $activity = $this->findActivity($id);
         if (!$activity instanceof Activity) {
             return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
         }
@@ -138,7 +135,7 @@ final class ActivityMetricsController extends AbstractController
         $activity->setFeaturesObjectKey($payload['featuresObjectKey']);
         $activity->touchPipelineHeartbeat();
 
-        $entityManager->flush();
+        $this->entityManager->flush();
 
         return $this->json($activity->toApiArray());
     }
@@ -149,13 +146,9 @@ final class ActivityMetricsController extends AbstractController
         methods: ['PATCH'],
         requirements: ['id' => '\d+'],
     )]
-    public function updateSummary(
-        int $id,
-        Request $request,
-        ActivityRepository $activityRepository,
-        EntityManagerInterface $entityManager,
-    ): JsonResponse {
-        $activity = $activityRepository->find($id);
+    public function updateSummary(int $id, Request $request): JsonResponse
+    {
+        $activity = $this->findActivity($id);
         if (!$activity instanceof Activity) {
             return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
         }
@@ -184,8 +177,41 @@ final class ActivityMetricsController extends AbstractController
         $activity->setAnalysisVersion(AnalysisVersions::CURRENT);
         $activity->clearPipelineHeartbeat();
 
-        $entityManager->flush();
+        $this->entityManager->flush();
 
         return $this->json($activity->toApiArray());
+    }
+
+    #[Route(
+        '/api/activities/{id}/pipeline-heartbeat',
+        name: 'api_activities_pipeline_heartbeat',
+        methods: ['PATCH'],
+        requirements: ['id' => '\d+'],
+    )]
+    public function touchPipelineHeartbeat(int $id): JsonResponse
+    {
+        $activity = $this->findActivity($id);
+        if (!$activity instanceof Activity) {
+            return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $activity->touchPipelineHeartbeat();
+        if (Activity::STATUS_UPLOADED === $activity->getStatus()) {
+            $activity->setStatus(Activity::STATUS_ANALYZING);
+        }
+        $this->entityManager->flush();
+
+        return $this->json([
+            'id' => (string) $activity->getId(),
+            'status' => $activity->getStatus(),
+            'pipelineHeartbeatAt' => $activity->getPipelineHeartbeatAt()?->format(\DateTimeInterface::ATOM),
+        ]);
+    }
+
+    private function findActivity(int $id): ?Activity
+    {
+        $activity = $this->activityRepository->find($id);
+
+        return $activity instanceof Activity ? $activity : null;
     }
 }
