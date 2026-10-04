@@ -7,6 +7,7 @@ export type ActivityType = 'easy' | 'tempo' | 'intervals' | 'long_run' | 'recove
 export type ReprocessReason =
   | 'outdated_analysis'
   | 'stale_pipeline'
+  | 'pipeline_in_progress'
   | 'already_current'
   | 'outside_window'
   | 'not_ready'

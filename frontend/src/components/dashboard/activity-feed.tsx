@@ -142,6 +142,15 @@ function ActivityRow({
   const [metricsReveal, setMetricsReveal] = useState(hasMetrics)
   const [reprocessing, setReprocessing] = useState(false)
   const [reprocessError, setReprocessError] = useState<string | null>(null)
+  const [hideReprocessCta, setHideReprocessCta] = useState(false)
+
+  useEffect(() => {
+    if (activity.status === 'ready' || activity.status === 'failed') {
+      setHideReprocessCta(false)
+    }
+  }, [activity.status])
+
+  const showReprocessCta = Boolean(activity.reprocessAvailable) && !hideReprocessCta && !reprocessing
 
   useEffect(() => {
     if (prevStatus.current !== 'ready' && activity.status === 'ready') {
@@ -230,7 +239,7 @@ function ActivityRow({
           </p>
         ) : null}
 
-        {activity.reprocessAvailable ? (
+        {showReprocessCta ? (
           <div className="space-y-2 rounded-2xl bg-secondary/40 px-3 py-3">
             <p className="text-sm text-foreground/85">
               {activity.reprocessReason === 'stale_pipeline'
@@ -241,15 +250,17 @@ function ActivityRow({
               type="button"
               variant="secondary"
               size="sm"
-              disabled={reprocessing || !onReprocess}
+              disabled={!onReprocess}
               onClick={() => {
                 if (!onReprocess) {
                   return
                 }
                 setReprocessError(null)
                 setReprocessing(true)
+                setHideReprocessCta(true)
                 void onReprocess(activity.id)
                   .catch((err) => {
+                    setHideReprocessCta(false)
                     setReprocessError(
                       err instanceof Error ? err.message : 'Could not refresh analysis.',
                     )

@@ -139,6 +139,28 @@ func (c *Client) PatchActivitySummary(ctx context.Context, activityID int, reque
 	return nil
 }
 
+func (c *Client) PatchPipelineHeartbeat(ctx context.Context, activityID int) error {
+	url := fmt.Sprintf("%s/api/activities/%d/pipeline-heartbeat", c.baseURL, activityID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPatch, url, http.NoBody)
+	if err != nil {
+		return fmt.Errorf("new request: %w", err)
+	}
+	req.Header.Set("X-Worker-Token", c.apiToken)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return &HTTPError{StatusCode: resp.StatusCode, Body: string(respBody)}
+	}
+
+	return nil
+}
+
 func (c *Client) GetActivity(ctx context.Context, activityID int) (*domain.Activity, error) {
 	url := fmt.Sprintf("%s/api/activities/%d", c.baseURL, activityID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

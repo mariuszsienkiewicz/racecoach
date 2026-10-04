@@ -11,6 +11,7 @@ use Doctrine\ORM\Mapping as ORM;
 #[ORM\Entity(repositoryClass: ActivityRepository::class)]
 #[ORM\Table(name: 'activity')]
 #[ORM\Index(columns: ['user_id', 'started_at'], name: 'idx_activity_user_started')]
+#[ORM\HasLifecycleCallbacks]
 class Activity
 {
     public const SOURCE_FIT_UPLOAD = 'fit_upload';
@@ -121,15 +122,30 @@ class Activity
     #[ORM\Column]
     private \DateTimeImmutable $createdAt;
 
+    #[ORM\Column]
+    private \DateTimeImmutable $updatedAt;
+
+    #[ORM\Column(nullable: true)]
+    private ?\DateTimeImmutable $pipelineHeartbeatAt = null;
+
     /** @var Collection<int, ActivityChatMessage> */
     #[ORM\OneToMany(mappedBy: 'activity', targetEntity: ActivityChatMessage::class)]
     private Collection $chatMessages;
 
     public function __construct()
     {
-        $this->startedAt = new \DateTimeImmutable();
-        $this->createdAt = new \DateTimeImmutable();
+        $now = new \DateTimeImmutable();
+        $this->startedAt = $now;
+        $this->createdAt = $now;
+        $this->updatedAt = $now;
         $this->chatMessages = new ArrayCollection();
+    }
+
+    #[ORM\PrePersist]
+    #[ORM\PreUpdate]
+    public function touchUpdatedAt(): void
+    {
+        $this->updatedAt = new \DateTimeImmutable();
     }
 
     public function getId(): ?int
@@ -418,6 +434,30 @@ class Activity
         return $this->createdAt;
     }
 
+    public function getUpdatedAt(): \DateTimeImmutable
+    {
+        return $this->updatedAt;
+    }
+
+    public function getPipelineHeartbeatAt(): ?\DateTimeImmutable
+    {
+        return $this->pipelineHeartbeatAt;
+    }
+
+    public function touchPipelineHeartbeat(): static
+    {
+        $this->pipelineHeartbeatAt = new \DateTimeImmutable();
+
+        return $this;
+    }
+
+    public function clearPipelineHeartbeat(): static
+    {
+        $this->pipelineHeartbeatAt = null;
+
+        return $this;
+    }
+
     /**
      * @return Collection<int, ActivityChatMessage>
      */
@@ -458,6 +498,7 @@ class Activity
             'summaryObjectKey' => $this->summaryObjectKey,
             'checksumSha256' => $this->checksumSha256,
             'analysisVersion' => $this->analysisVersion,
+            'pipelineHeartbeatAt' => $this->pipelineHeartbeatAt?->format(\DateTimeInterface::ATOM),
         ];
     }
 }

@@ -154,7 +154,7 @@ export function useDashboard(): DashboardState {
         throw new Error('Your session expired. Please sign in again.')
       }
       const activity = await dashboardService.reprocessActivity(token, activityId)
-      addActivity(activity)
+      addActivity({ ...activity, reprocessAvailable: false })
     },
     [addActivity, token],
   )

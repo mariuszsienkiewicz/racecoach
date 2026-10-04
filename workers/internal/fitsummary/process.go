@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"time"
 
 	amqpClient "github.com/rabbitmq/amqp091-go"
 	amqp "github.com/racecoach/workers/internal/amqp"
@@ -15,6 +16,8 @@ import (
 	"github.com/racecoach/workers/internal/llm"
 	"github.com/racecoach/workers/internal/storage"
 )
+
+const pipelineHeartbeatInterval = 30 * time.Second
 
 func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient *storage.Client, apiClient *api.Client, llmClient *llm.Client, d amqpClient.Delivery) error {
 	// Guard against leftover/misconfigured binds which would otherwise republish forever on short-circuit
@@ -79,6 +82,9 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 		"Prefer signals.display.effort, signals.intervalPattern, and signals.byIntensity.active for work quality.\n" +
 		"Never treat recovery/warmup/cooldown pace as slowest work lap.\n\n" +
 		"Features JSON:\n" + string(featuresJSON)
+
+	stopHeartbeat := startPipelineHeartbeat(ctx, apiClient, ev.ActivityID)
+	defer stopHeartbeat()
 
 	raw, err := llmClient.Completion(ctx, llmClient.NewCompletionRequest(systemPrompt, userPrompt))
 	if err != nil {
@@ -180,4 +186,36 @@ func isSummaryDone(a domain.Activity, expectedKey string) bool {
 		return false
 	}
 	return a.Status == "ready"
+}
+
+func startPipelineHeartbeat(ctx context.Context, apiClient *api.Client, activityID int) func() {
+	hbCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+		tick := func() {
+			beatCtx, beatCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer beatCancel()
+			if err := apiClient.PatchPipelineHeartbeat(beatCtx, activityID); err != nil {
+				log.Printf("pipeline heartbeat failed activity=%d: %v", activityID, err)
+			}
+		}
+		tick()
+		ticker := time.NewTicker(pipelineHeartbeatInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-hbCtx.Done():
+				return
+			case <-ticker.C:
+				tick()
+			}
+		}
+	}()
+
+	return func() {
+		cancel()
+		<-done
+	}
 }

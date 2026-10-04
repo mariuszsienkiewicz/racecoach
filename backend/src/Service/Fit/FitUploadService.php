@@ -75,7 +75,8 @@ final class FitUploadService
             ->setStorageBucket($this->objectStorage->getBucket())
             ->setFileSizeBytes((int) $fileSize)
             ->setChecksumSha256($checksum)
-            ->setSummary('Queued for analysis.');
+            ->setSummary('Queued for analysis.')
+            ->touchPipelineHeartbeat();
 
         $this->entityManager->persist($activity);
 

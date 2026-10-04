@@ -29,7 +29,8 @@ final class ActivityReprocessService
             ->setFeaturesObjectKey(null)
             ->setSummaryObjectKey(null)
             ->setSummary('Queued for analysis.')
-            ->setAnalysisVersion(null);
+            ->setAnalysisVersion(null)
+            ->touchPipelineHeartbeat();
 
         if (ReprocessMode::FULL === $mode) {
             $activity

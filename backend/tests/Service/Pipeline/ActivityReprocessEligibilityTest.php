@@ -45,7 +45,34 @@ final class ActivityReprocessEligibilityTest extends TestCase
         self::assertSame('outside_window', $desc['reprocessReason']);
     }
 
-    public function testStuckAnalyzingIsAvailable(): void
+    public function testFreshHeartbeatIsInProgress(): void
+    {
+        $activity = $this->activity(status: Activity::STATUS_ANALYZING, version: null, id: 1);
+        $activity->touchPipelineHeartbeat();
+        $eligibility = new ActivityReprocessEligibility($this->createStub(ActivityRepository::class));
+
+        $desc = $eligibility->describe($activity, [1 => true]);
+
+        self::assertFalse($desc['reprocessAvailable']);
+        self::assertSame('pipeline_in_progress', $desc['reprocessReason']);
+        $this->expectException(ActivityCannotReprocessException::class);
+        $eligibility->assertEligible($activity, [1 => true]);
+    }
+
+    public function testStaleHeartbeatShowsCtaAndAllowsApi(): void
+    {
+        $activity = $this->activity(status: Activity::STATUS_ANALYZING, version: null, id: 1);
+        $this->setHeartbeatAt($activity, new \DateTimeImmutable('-10 minutes'));
+        $eligibility = new ActivityReprocessEligibility($this->createStub(ActivityRepository::class));
+
+        $desc = $eligibility->describe($activity, [1 => true]);
+
+        self::assertTrue($desc['reprocessAvailable']);
+        self::assertSame('stale_pipeline', $desc['reprocessReason']);
+        $eligibility->assertEligible($activity, [1 => true]);
+    }
+
+    public function testMissingHeartbeatIsStale(): void
     {
         $activity = $this->activity(status: Activity::STATUS_ANALYZING, version: null, id: 1);
         $eligibility = new ActivityReprocessEligibility($this->createStub(ActivityRepository::class));
@@ -54,7 +81,6 @@ final class ActivityReprocessEligibilityTest extends TestCase
 
         self::assertTrue($desc['reprocessAvailable']);
         self::assertSame('stale_pipeline', $desc['reprocessReason']);
-        $eligibility->assertEligible($activity, [1 => true]);
     }
 
     public function testAssertEligibleThrowsForCurrent(): void
@@ -107,5 +133,11 @@ final class ActivityReprocessEligibilityTest extends TestCase
     {
         $ref = new \ReflectionProperty($entity, 'id');
         $ref->setValue($entity, $id);
+    }
+
+    private function setHeartbeatAt(Activity $activity, \DateTimeImmutable $at): void
+    {
+        $ref = new \ReflectionProperty($activity, 'pipelineHeartbeatAt');
+        $ref->setValue($activity, $at);
     }
 }

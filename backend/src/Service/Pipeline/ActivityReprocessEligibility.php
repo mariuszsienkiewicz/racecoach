@@ -68,7 +68,7 @@ final class ActivityReprocessEligibility
         }
 
         throw new ActivityCannotReprocessException(match ($reason) {
-            'already_current' => 'Analysis is already up to date.', 'outside_window' => 'Only recent activities can be reprocessed.', 'not_ready' => 'Activity is not ready for reprocess.', 'missing_fit' => 'Activity has no FIT object to reprocess.', default => 'Activity cannot be reprocessed.',
+            'already_current' => 'Analysis is already up to date.', 'outside_window' => 'Only recent activities can be reprocessed.', 'pipeline_in_progress' => 'Analysis is still running. Try again if it stays stuck.', 'not_ready' => 'Activity is not ready for reprocess.', 'missing_fit' => 'Activity has no FIT object to reprocess.', default => 'Activity cannot be reprocessed.',
         });
     }
 
@@ -92,8 +92,11 @@ final class ActivityReprocessEligibility
         }
 
         $status = $activity->getStatus();
-        if (\in_array($status, [Activity::STATUS_ANALYZING, Activity::STATUS_UPLOADED, Activity::STATUS_FAILED], true)) {
+        if (Activity::STATUS_FAILED === $status) {
             return 'stale_pipeline';
+        }
+        if (\in_array($status, [Activity::STATUS_ANALYZING, Activity::STATUS_UPLOADED], true)) {
+            return $this->isPipelineHeartbeatStale($activity) ? 'stale_pipeline' : 'pipeline_in_progress';
         }
         if (Activity::STATUS_READY !== $status) {
             return 'not_ready';
@@ -105,5 +108,17 @@ final class ActivityReprocessEligibility
         }
 
         return 'outdated_analysis';
+    }
+
+    private function isPipelineHeartbeatStale(Activity $activity): bool
+    {
+        $heartbeat = $activity->getPipelineHeartbeatAt();
+        if (null === $heartbeat) {
+            return true;
+        }
+
+        $threshold = new \DateTimeImmutable('-'.AnalysisVersions::STALE_PIPELINE_AFTER);
+
+        return $heartbeat <= $threshold;
     }
 }

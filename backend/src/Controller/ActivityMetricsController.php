@@ -53,6 +53,7 @@ final class ActivityMetricsController extends AbstractController
         $activity->setAvgHeartRate($avgHeartRate);
         $activity->setSummary('Metrics ready, further analysis still running.');
         $activity->setStatus(Activity::STATUS_ANALYZING);
+        $activity->touchPipelineHeartbeat();
 
         if ($distanceM > 0) {
             $activity->setAvgPaceSecPerKm((int) round($durationSec / ($distanceM / 1000)));
@@ -98,6 +99,7 @@ final class ActivityMetricsController extends AbstractController
 
         $activity->setStatus(Activity::STATUS_ANALYZING);
         $activity->setStructureObjectKey($payload['structureObjectKey']);
+        $activity->touchPipelineHeartbeat();
 
         $entityManager->flush();
 
@@ -134,6 +136,7 @@ final class ActivityMetricsController extends AbstractController
 
         $activity->setStatus(Activity::STATUS_ANALYZING);
         $activity->setFeaturesObjectKey($payload['featuresObjectKey']);
+        $activity->touchPipelineHeartbeat();
 
         $entityManager->flush();
 
@@ -179,6 +182,7 @@ final class ActivityMetricsController extends AbstractController
         $activity->setSummary($payload['summary']);
         $activity->setStatus(Activity::STATUS_READY);
         $activity->setAnalysisVersion(AnalysisVersions::CURRENT);
+        $activity->clearPipelineHeartbeat();
 
         $entityManager->flush();
 
