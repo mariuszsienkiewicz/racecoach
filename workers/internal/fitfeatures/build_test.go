@@ -27,7 +27,7 @@ func TestBuildEnrichesLapsAndSignals(t *testing.T) {
 		},
 	}
 
-	features := Build(metrics, structure)
+	features := Build(metrics, structure, nil)
 	if features.Overview.LapCount != 2 {
 		t.Fatalf("lapCount=%d", features.Overview.LapCount)
 	}
@@ -49,7 +49,7 @@ func TestBuildEnrichesLapsAndSignals(t *testing.T) {
 	if features.Signals.Display.FastestLapPace != "4:40 /km" {
 		t.Fatalf("signals display fastest=%q", features.Signals.Display.FastestLapPace)
 	}
-	if features.SchemaVersion != 4 {
+	if features.SchemaVersion != 5 {
 		t.Fatalf("schemaVersion=%d", features.SchemaVersion)
 	}
 }
@@ -81,7 +81,7 @@ func TestBuildIntervalWorkoutActiveAggregates(t *testing.T) {
 		},
 	}
 
-	features := Build(metrics, structure)
+	features := Build(metrics, structure, nil)
 	if features.Signals.SuspectedWorkoutShape != "intervals" {
 		t.Fatalf("shape=%s", features.Signals.SuspectedWorkoutShape)
 	}
@@ -116,6 +116,54 @@ func TestBuildIntervalWorkoutActiveAggregates(t *testing.T) {
 	}
 }
 
+func TestBuildKmSplitLongRunIsNotIntervals(t *testing.T) {
+	pace := func(v int) *int { return &v }
+	hr := func(v int) *int { return &v }
+
+	// 10 km auto-lap splits with natural pace jitter
+	laps := make([]domain.Lap, 0, 10)
+	paces := []int{380, 360, 370, 350, 365, 355, 375, 348, 368, 358}
+	for i, p := range paces {
+		laps = append(laps, domain.Lap{
+			Index:           i,
+			DistanceM:       1000,
+			DurationSec:     p,
+			AvgPaceSecPerKm: pace(p),
+			AvgHeartRate:    hr(150 + (i % 3)),
+			LapTrigger:      "distance",
+		})
+	}
+
+	metrics := domain.ActivityMetrics{
+		ActivityID:   99,
+		DistanceM:    10000,
+		DurationSec:  3629,
+		AvgHeartRate: hr(152),
+		MaxHeartRate: hr(168),
+	}
+	structure := domain.ActivityStructure{ActivityID: 99, ObjectKey: "x.fit", Laps: laps}
+	athlete := &domain.AthleteContext{
+		Zones: []domain.HrZone{
+			{Zone: 1, MinBpm: 127, MaxBpm: 143},
+			{Zone: 2, MinBpm: 143, MaxBpm: 159},
+			{Zone: 3, MinBpm: 159, MaxBpm: 174},
+			{Zone: 4, MinBpm: 174, MaxBpm: 190},
+			{Zone: 5, MinBpm: 190, MaxBpm: 206},
+		},
+	}
+
+	features := Build(metrics, structure, athlete)
+	if features.Signals.SuspectedWorkoutShape == "intervals" {
+		t.Fatalf("km-split long run must not be intervals, got %s", features.Signals.SuspectedWorkoutShape)
+	}
+	if features.Signals.Effort == nil || features.Signals.Effort.Label != "easy" {
+		t.Fatalf("expected easy effort in Z2, got %#v", features.Signals.Effort)
+	}
+	if got := ClassifyActivityType(features); got != "long_run" {
+		t.Fatalf("type=%s", got)
+	}
+}
+
 func TestBuildNearMaxEffortFromMaxHR(t *testing.T) {
 	hr := func(v int) *int { return &v }
 	metrics := domain.ActivityMetrics{
@@ -132,7 +180,7 @@ func TestBuildNearMaxEffortFromMaxHR(t *testing.T) {
 			{Index: 0, DistanceM: 5070, DurationSec: 1458, AvgPaceSecPerKm: hr(172), AvgHeartRate: hr(170), MaxHeartRate: hr(205)},
 		},
 	}
-	features := Build(metrics, structure)
+	features := Build(metrics, structure, nil)
 	if features.Overview.MaxHeartRate == nil || *features.Overview.MaxHeartRate != 205 {
 		t.Fatalf("maxHR=%v", features.Overview.MaxHeartRate)
 	}

@@ -28,16 +28,13 @@ security:
                 success_handler: lexik_jwt_authentication.handler.authentication_success
                 failure_handler: lexik_jwt_authentication.handler.authentication_failure
 
-        # Machine-to-machine: Go workers (before the JWT api firewall).
         worker_api:
-            pattern: ^/api/activities/\d+/(metrics|structure|features|summary|pipeline-heartbeat)$
+            pattern: ^/api/activities/\d+/(metrics|structure|features|summary|pipeline-heartbeat|athlete-context)$
             stateless: true
             provider: worker_provider
             custom_authenticators:
                 - App\Security\WorkerTokenAuthenticator
 
-        # Browser JWT by default; WorkerTokenAuthenticator runs when X-Worker-Token is present
-        # (e.g. GET /api/activities/{id} for idempotency checks).
         api:
             pattern: ^/api
             stateless: true
@@ -53,7 +50,7 @@ security:
     access_control:
         - { path: ^/api/login, roles: PUBLIC_ACCESS }
         - { path: ^/api/register, roles: PUBLIC_ACCESS }
-        - { path: ^/api/activities/\d+/(metrics|structure|features|summary|pipeline-heartbeat)$, roles: ROLE_WORKER }
+        - { path: ^/api/activities/\d+/(metrics|structure|features|summary|pipeline-heartbeat|athlete-context)$, roles: ROLE_WORKER }
         - { path: ^/api,       roles: IS_AUTHENTICATED_FULLY }
 
 when@test:

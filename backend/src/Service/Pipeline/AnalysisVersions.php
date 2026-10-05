@@ -4,7 +4,7 @@ namespace App\Service\Pipeline;
 
 final class AnalysisVersions
 {
-    public const CURRENT = 3;
+    public const CURRENT = 5;
 
     public const REPROCESS_RECENT_LIMIT = 5;
 

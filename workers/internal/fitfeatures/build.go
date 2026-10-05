@@ -3,13 +3,14 @@ package fitfeatures
 import (
 	"fmt"
 	"math"
+	"strings"
 
 	"github.com/racecoach/workers/internal/domain"
 )
 
 // Build merges metrics + structure into an LLM-ready features artifact.
-// Numeric fields stay authoritative; display.* strings are for LLM answers.
-func Build(metrics domain.ActivityMetrics, structure domain.ActivityStructure) domain.ActivityFeatures {
+// Numeric fields stay authoritative. Display.* strings are for LLM answers.
+func Build(metrics domain.ActivityMetrics, structure domain.ActivityStructure, athlete *domain.AthleteContext) domain.ActivityFeatures {
 	overview := domain.FeaturesOverview{
 		DistanceM:    metrics.DistanceM,
 		DurationSec:  metrics.DurationSec,
@@ -32,14 +33,15 @@ func Build(metrics domain.ActivityMetrics, structure domain.ActivityStructure) d
 	overview.Display = overviewDisplay(overview)
 
 	byIntensity := buildByIntensity(structure.Laps)
-	laps := enrichLaps(structure.Laps, overview, byIntensity)
-	signals := deriveSignals(structure.Laps, overview, byIntensity)
+	laps := enrichLaps(structure.Laps, overview, byIntensity, athlete)
+	signals := deriveSignals(structure.Laps, overview, byIntensity, laps, athlete)
 
 	return domain.ActivityFeatures{
 		ActivityID:       structure.ActivityID,
-		SchemaVersion:    4,
+		SchemaVersion:    5,
 		ObjectKey:        structure.ObjectKey,
 		MetricsObjectKey: metrics.MetricsObjectKey,
+		Athlete:          athlete,
 		Overview:         overview,
 		Laps:             laps,
 		Signals:          signals,
@@ -63,7 +65,7 @@ func overviewDisplay(o domain.FeaturesOverview) domain.FeaturesOverviewDisplay {
 	return d
 }
 
-func enrichLaps(laps []domain.Lap, overview domain.FeaturesOverview, byIntensity domain.FeaturesByIntensity) []domain.FeatureLap {
+func enrichLaps(laps []domain.Lap, overview domain.FeaturesOverview, byIntensity domain.FeaturesByIntensity, athlete *domain.AthleteContext) []domain.FeatureLap {
 	var activeAvgPace *int
 	if byIntensity.Active != nil {
 		activeAvgPace = byIntensity.Active.AvgPaceSecPerKm
@@ -76,6 +78,9 @@ func enrichLaps(laps []domain.Lap, overview domain.FeaturesOverview, byIntensity
 			Lap:    lap,
 			Role:   role,
 			IsWork: role == "active",
+		}
+		if lap.AvgHeartRate != nil {
+			fl.AvgHrZone = zoneForHR(*lap.AvgHeartRate, athlete)
 		}
 		if overview.AvgPaceSecPerKm != nil && lap.AvgPaceSecPerKm != nil && *overview.AvgPaceSecPerKm > 0 {
 			delta := round1((float64(*lap.AvgPaceSecPerKm) - float64(*overview.AvgPaceSecPerKm)) / float64(*overview.AvgPaceSecPerKm) * 100)
@@ -125,10 +130,11 @@ func lapDisplay(fl domain.FeatureLap) domain.FeatureLapDisplay {
 	if fl.DurationSharePct != nil {
 		d.DurationShare = formatShare(*fl.DurationSharePct)
 	}
+	d.AvgHrZone = formatZone(fl.AvgHrZone)
 	return d
 }
 
-func deriveSignals(laps []domain.Lap, overview domain.FeaturesOverview, byIntensity domain.FeaturesByIntensity) domain.FeaturesSignals {
+func deriveSignals(laps []domain.Lap, overview domain.FeaturesOverview, byIntensity domain.FeaturesByIntensity, featureLaps []domain.FeatureLap, athlete *domain.AthleteContext) domain.FeaturesSignals {
 	_ = overview
 	signals := domain.FeaturesSignals{
 		IntensityCounts:       countBy(laps, func(l domain.Lap) string { return normalizeRole(l.Intensity) }),
@@ -136,6 +142,7 @@ func deriveSignals(laps []domain.Lap, overview domain.FeaturesOverview, byIntens
 		SplitBias:             "unknown",
 		SuspectedWorkoutShape: "unknown",
 		ByIntensity:           byIntensity,
+		HasAthleteZones:       athlete != nil && len(athlete.Zones) > 0,
 	}
 
 	paced := make([]domain.Lap, 0, len(laps))
@@ -196,21 +203,20 @@ func deriveSignals(laps []domain.Lap, overview domain.FeaturesOverview, byIntens
 	}
 
 	signals.IntervalPattern = buildIntervalPattern(laps, byIntensity)
-	signals.Effort = deriveEffort(overview, signals)
-	signals.Display = signalsDisplay(signals)
+	signals.DominantHrZone = dominantZoneFromLaps(featureLaps)
+	signals.TimeInZoneSec = timeInZoneSec(featureLaps)
+	signals.Effort = deriveEffort(overview, signals, athlete)
+	signals.Display = signalsDisplay(signals, athlete)
 	return signals
 }
 
-func deriveEffort(overview domain.FeaturesOverview, signals domain.FeaturesSignals) *domain.EffortSignal {
-	maxHR := overview.MaxHeartRate
-	avgHR := overview.AvgHeartRate
-	evidence := make([]string, 0, 4)
-
-	if maxHR != nil {
-		evidence = append(evidence, formatHR(maxHR)+" max HR")
+func deriveEffort(overview domain.FeaturesOverview, signals domain.FeaturesSignals, athlete *domain.AthleteContext) *domain.EffortSignal {
+	evidence := make([]string, 0, 6)
+	if overview.MaxHeartRate != nil {
+		evidence = append(evidence, formatHR(overview.MaxHeartRate)+" max HR")
 	}
-	if avgHR != nil {
-		evidence = append(evidence, formatHR(avgHR)+" avg HR")
+	if overview.AvgHeartRate != nil {
+		evidence = append(evidence, formatHR(overview.AvgHeartRate)+" avg HR")
 	}
 	if overview.Display.AvgPace != "" {
 		evidence = append(evidence, overview.Display.AvgPace+" avg pace")
@@ -219,29 +225,49 @@ func deriveEffort(overview domain.FeaturesOverview, signals domain.FeaturesSigna
 		evidence = append(evidence, "interval session structure")
 	}
 
+	// Personalized path: zones beat absolute bpm heuristics.
+	if athlete != nil && len(athlete.Zones) > 0 && signals.DominantHrZone != nil {
+		zone := *signals.DominantHrZone
+		label := effortFromZone(zone)
+		// Only escalate easy/moderate → hard when FIT has real work/rest intensity roles.
+		// Km-split "intervals" guesses must not override an aerobic Z1–Z2 long run.
+		if signals.SuspectedWorkoutShape == "intervals" &&
+			(label == "easy" || label == "moderate") &&
+			hasStructuredWorkRest(signals.ByIntensity) {
+			label = "hard"
+			evidence = append(evidence, "structured work/rest intensity raises effort vs steady zone")
+		}
+		evidence = append(evidence, formatZone(&zone)+" dominant zone from athlete profile")
+		display := formatEffortLabel(label)
+		if len(evidence) > 0 {
+			display = display + " (" + joinEvidence(evidence) + ")"
+		}
+		return &domain.EffortSignal{Label: label, Confidence: "high", Evidence: evidence, Display: display}
+	}
+
+	// Fallback without profile: conservative, low confidence. Avoid shaming high absolute HR.
 	label := "unknown"
+	maxHR := overview.MaxHeartRate
+	avgHR := overview.AvgHeartRate
 	switch {
-	case maxHR != nil && *maxHR >= 195:
+	case signals.SuspectedWorkoutShape == "intervals" && hasStructuredWorkRest(signals.ByIntensity):
+		label = "hard"
+	case maxHR != nil && avgHR != nil && *maxHR >= 190 && *avgHR >= 170:
 		label = "near_max"
-	case maxHR != nil && *maxHR >= 180:
+	case maxHR != nil && avgHR != nil && *maxHR >= 185 && *avgHR >= 160:
 		label = "hard"
-	case signals.SuspectedWorkoutShape == "intervals":
-		label = "hard"
-	case maxHR != nil && *maxHR >= 165:
+	case avgHR != nil && *avgHR < 140:
+		label = "easy"
+	default:
 		label = "moderate"
-	case maxHR != nil && avgHR != nil && *maxHR < 155 && *avgHR < 140:
-		label = "easy"
-	case maxHR == nil && avgHR != nil && *avgHR < 135:
-		label = "easy"
-	case maxHR == nil && avgHR != nil && *avgHR >= 160:
-		label = "hard"
+		evidence = append(evidence, "no athlete HR zones configured - intensity is approximate")
 	}
 
 	display := formatEffortLabel(label)
 	if len(evidence) > 0 {
 		display = display + " (" + joinEvidence(evidence) + ")"
 	}
-	return &domain.EffortSignal{Label: label, Evidence: evidence, Display: display}
+	return &domain.EffortSignal{Label: label, Confidence: "low", Evidence: evidence, Display: display}
 }
 
 func formatEffortLabel(label string) string {
@@ -287,7 +313,7 @@ func maxLapHeartRate(laps []domain.Lap) *int {
 	return &max
 }
 
-func signalsDisplay(s domain.FeaturesSignals) domain.FeaturesSignalsDisplay {
+func signalsDisplay(s domain.FeaturesSignals, athlete *domain.AthleteContext) domain.FeaturesSignalsDisplay {
 	d := domain.FeaturesSignalsDisplay{
 		SplitBias:             formatSplitBias(s.SplitBias, s.SecondHalfPaceDeltaPct),
 		SuspectedWorkoutShape: formatWorkoutShape(s.SuspectedWorkoutShape),
@@ -296,6 +322,8 @@ func signalsDisplay(s domain.FeaturesSignals) domain.FeaturesSignalsDisplay {
 		FastestLapPace:        formatPacePtr(s.FastestLapPaceSecPerKm),
 		SlowestLapPace:        formatPacePtr(s.SlowestLapPaceSecPerKm),
 		IntensityBreakdown:    formatIntensityBreakdown(s.IntensityCounts),
+		AthleteZones:          formatAthleteZones(athlete),
+		DominantHrZone:        formatZone(s.DominantHrZone),
 	}
 	if s.PaceVariabilityPct != nil {
 		d.PaceVariability = fmt.Sprintf("%.1f%% pace variability across all laps", *s.PaceVariabilityPct)
@@ -354,20 +382,25 @@ func heartRateDrift(laps []domain.Lap) (float64, bool) {
 }
 
 func guessShape(signals domain.FeaturesSignals, paced []domain.Lap, byIntensity domain.FeaturesByIntensity) string {
-	if byIntensity.Active != nil && byIntensity.Active.LapCount >= 2 &&
-		(byIntensity.Recovery != nil && byIntensity.Recovery.LapCount >= 1) {
+	// Strong evidence: device-tagged active work + recovery.
+	if hasStructuredWorkRest(byIntensity) {
 		return "intervals"
 	}
 
 	if len(paced) < 2 {
 		return "unknown"
 	}
+
+	if mostlyKmSplits(paced) {
+		return shapeFromOverallPace(signals, paced)
+	}
+
 	cv := 0.0
 	if signals.PaceVariabilityPct != nil {
 		cv = *signals.PaceVariabilityPct
 	}
 
-	if cv >= 8 && len(paced) >= 4 {
+	if cv >= 12 && len(paced) >= 6 {
 		flips := 0
 		for i := 2; i < len(paced); i++ {
 			d1 := *paced[i-1].AvgPaceSecPerKm - *paced[i-2].AvgPaceSecPerKm
@@ -376,11 +409,16 @@ func guessShape(signals domain.FeaturesSignals, paced []domain.Lap, byIntensity 
 				flips++
 			}
 		}
-		if flips >= (len(paced)-2)/2 {
+		// Require a clear alternating pattern, not mild long-run noise.
+		if flips >= int(math.Ceil(float64(len(paced)-2)*0.66)) {
 			return "intervals"
 		}
 	}
 
+	return shapeFromOverallPace(signals, paced)
+}
+
+func shapeFromOverallPace(signals domain.FeaturesSignals, paced []domain.Lap) string {
 	if len(paced) >= 3 {
 		n := len(paced) / 3
 		if n < 1 {
@@ -393,10 +431,41 @@ func guessShape(signals domain.FeaturesSignals, paced []domain.Lap, byIntensity 
 		}
 	}
 
-	if cv < 5 {
+	cv := 0.0
+	if signals.PaceVariabilityPct != nil {
+		cv = *signals.PaceVariabilityPct
+	}
+	if cv < 8 {
 		return "steady"
 	}
 	return "unknown"
+}
+
+func hasStructuredWorkRest(byIntensity domain.FeaturesByIntensity) bool {
+	return byIntensity.Active != nil && byIntensity.Active.LapCount >= 2 &&
+		byIntensity.Recovery != nil && byIntensity.Recovery.LapCount >= 1
+}
+
+func mostlyKmSplits(laps []domain.Lap) bool {
+	if len(laps) == 0 {
+		return false
+	}
+	km := 0
+	for _, lap := range laps {
+		if isKmSplitTrigger(lap.LapTrigger) {
+			km++
+		}
+	}
+	return float64(km)/float64(len(laps)) >= 0.7
+}
+
+func isKmSplitTrigger(trigger string) bool {
+	switch strings.ToLower(strings.TrimSpace(trigger)) {
+	case "synthetic_km", "distance", "distance_manual":
+		return true
+	default:
+		return false
+	}
 }
 
 func sumElevationAndCalories(laps []domain.Lap) (ascent, descent, calories *int) {

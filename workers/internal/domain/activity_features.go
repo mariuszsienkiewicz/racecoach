@@ -8,6 +8,7 @@ type ActivityFeatures struct {
 	MetricsObjectKey   string           `json:"metricsObjectKey"`
 	StructureObjectKey string           `json:"structureObjectKey"`
 	FeaturesObjectKey  string           `json:"featuresObjectKey,omitempty"`
+	Athlete            *AthleteContext  `json:"athlete,omitempty"`
 	Overview           FeaturesOverview `json:"overview"`
 	Laps               []FeatureLap     `json:"laps"`
 	Signals            FeaturesSignals  `json:"signals"`
@@ -45,6 +46,7 @@ type FeatureLap struct {
 	Lap
 	Role                  string            `json:"role,omitempty"` // active | recovery | warmup | cooldown | other
 	IsWork                bool              `json:"isWork"`
+	AvgHrZone             *int              `json:"avgHrZone,omitempty"` // 1–5 from athlete zones
 	PaceDeltaPctVsOverall *float64          `json:"paceDeltaPctVsOverall,omitempty"`
 	PaceDeltaPctVsActive  *float64          `json:"paceDeltaPctVsActive,omitempty"`
 	DistanceSharePct      *float64          `json:"distanceSharePct,omitempty"`
@@ -69,6 +71,7 @@ type FeatureLapDisplay struct {
 	PaceDeltaVsActive  string `json:"paceDeltaVsActive,omitempty"`
 	DistanceShare      string `json:"distanceShare,omitempty"`
 	DurationShare      string `json:"durationShare,omitempty"`
+	AvgHrZone          string `json:"avgHrZone,omitempty"`
 }
 
 // FeaturesSignals are compact derived hints so the LLM need not recompute basics.
@@ -85,6 +88,9 @@ type FeaturesSignals struct {
 	LapTriggerCounts       map[string]int         `json:"lapTriggerCounts,omitempty"`
 	SuspectedWorkoutShape  string                 `json:"suspectedWorkoutShape,omitempty"` // steady | intervals | progression | unknown
 	Effort                 *EffortSignal          `json:"effort,omitempty"`
+	DominantHrZone         *int                   `json:"dominantHrZone,omitempty"`
+	TimeInZoneSec          map[string]int         `json:"timeInZoneSec,omitempty"`
+	HasAthleteZones        bool                   `json:"hasAthleteZones"`
 	ByIntensity            FeaturesByIntensity    `json:"byIntensity"`
 	IntervalPattern        *IntervalPattern       `json:"intervalPattern,omitempty"`
 	Display                FeaturesSignalsDisplay `json:"display"`
@@ -92,9 +98,10 @@ type FeaturesSignals struct {
 
 // EffortSignal is a coarse intensity label derived from HR (and shape), for the LLM.
 type EffortSignal struct {
-	Label    string   `json:"label"` // easy | moderate | hard | near_max | unknown
-	Evidence []string `json:"evidence,omitempty"`
-	Display  string   `json:"display,omitempty"`
+	Label      string   `json:"label"` // easy | moderate | hard | near_max | unknown
+	Confidence string   `json:"confidence,omitempty"` // high | low
+	Evidence   []string `json:"evidence,omitempty"`
+	Display    string   `json:"display,omitempty"`
 }
 
 // FeaturesByIntensity aggregates laps by FIT intensity role.
@@ -180,6 +187,8 @@ type FeaturesSignalsDisplay struct {
 	ActiveWork            string `json:"activeWork,omitempty"`
 	IntervalPattern       string `json:"intervalPattern,omitempty"`
 	Effort                string `json:"effort,omitempty"`
+	DominantHrZone        string `json:"dominantHrZone,omitempty"`
+	AthleteZones          string `json:"athleteZones,omitempty"`
 }
 
 // PatchActivityFeaturesRequest is the JSON payload for the PATCH endpoint.

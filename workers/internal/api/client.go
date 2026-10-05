@@ -161,6 +161,34 @@ func (c *Client) PatchPipelineHeartbeat(ctx context.Context, activityID int) err
 	return nil
 }
 
+func (c *Client) GetAthleteContext(ctx context.Context, activityID int) (*domain.AthleteContext, error) {
+	url := fmt.Sprintf("%s/api/activities/%d/athlete-context", c.baseURL, activityID)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("new request: %w", err)
+	}
+	req.Header.Set("X-Worker-Token", c.apiToken)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("do: %w", err)
+	}
+	defer resp.Body.Close()
+
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 8192))
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, &HTTPError{StatusCode: resp.StatusCode, Body: string(respBody)}
+	}
+
+	var payload domain.AthleteContextResponse
+	if err := json.Unmarshal(respBody, &payload); err != nil {
+		return nil, fmt.Errorf("unmarshal: %w", err)
+	}
+	if !payload.HasProfile || payload.Athlete == nil || len(payload.Athlete.Zones) == 0 {
+		return nil, nil
+	}
+	return payload.Athlete, nil
+}
+
 func (c *Client) GetActivity(ctx context.Context, activityID int) (*domain.Activity, error) {
 	url := fmt.Sprintf("%s/api/activities/%d", c.baseURL, activityID)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

@@ -12,9 +12,30 @@ func ClassifyActivityType(features domain.ActivityFeatures) string {
 		effort = features.Signals.Effort.Label
 	}
 	distanceM := features.Overview.DistanceM
+	dominant := features.Signals.DominantHrZone
+	structuredIntervals := shape == "intervals" && hasStructuredWorkRest(features.Signals.ByIntensity)
 
-	if shape == "intervals" {
+	// True interval sessions (FIT work/rest roles). Aerobic dominant zone still wins the tag
+	// only when we lack structured intensity, otherwise keep intervals.
+	if structuredIntervals {
 		return "intervals"
+	}
+
+	if features.Signals.HasAthleteZones && dominant != nil {
+		switch {
+		case *dominant >= 5 && effort == "near_max":
+			return "race"
+		case *dominant >= 4:
+			return "tempo"
+		case *dominant == 3 && distanceM >= longRunDistanceM:
+			return "long_run"
+		case *dominant == 3:
+			return "tempo"
+		case distanceM >= longRunDistanceM:
+			return "long_run"
+		default:
+			return "easy"
+		}
 	}
 
 	switch effort {

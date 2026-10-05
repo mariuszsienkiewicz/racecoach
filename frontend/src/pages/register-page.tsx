@@ -38,7 +38,7 @@ export function RegisterPage() {
 
     try {
       await register(email, password)
-      navigate('/dashboard')
+      navigate('/onboarding')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not create your account.')
     } finally {

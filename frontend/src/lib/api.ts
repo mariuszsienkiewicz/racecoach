@@ -1,3 +1,4 @@
+import type { AthleteProfile, AthleteProfilePayload, HrZone } from '@/types/athlete-profile'
 import type { Activity, ChatMessage } from '@/types/dashboard'
 
 const API_BASE = import.meta.env.VITE_API_URL ?? ''
@@ -6,6 +7,7 @@ export type AuthUser = {
   id: number
   email: string
   roles: string[]
+  onboardingCompleted: boolean
 }
 
 type LoginResponse = {
@@ -119,7 +121,59 @@ export async function fetchMe(token: string): Promise<AuthUser> {
     throw new Error('Your session expired. Please sign in again.')
   }
 
-  return (await response.json()) as AuthUser
+  const data = (await response.json()) as AuthUser
+  return {
+    ...data,
+    onboardingCompleted: Boolean(data.onboardingCompleted),
+  }
+}
+
+export async function fetchAthleteProfile(
+  token: string,
+): Promise<{ onboardingCompleted: boolean; profile: AthleteProfile | null }> {
+  const response = await fetch(`${API_BASE}/api/me/profile`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Could not load athlete profile.'))
+  }
+  return (await response.json()) as { onboardingCompleted: boolean; profile: AthleteProfile | null }
+}
+
+export async function saveAthleteProfile(
+  token: string,
+  payload: AthleteProfilePayload,
+): Promise<{ onboardingCompleted: boolean; profile: AthleteProfile }> {
+  const response = await fetch(`${API_BASE}/api/me/profile`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Could not save athlete profile.'))
+  }
+  return (await response.json()) as { onboardingCompleted: boolean; profile: AthleteProfile }
+}
+
+export async function previewAthleteZones(
+  token: string,
+  payload: { birthYear?: number; hrMax?: number; hrRest?: number | null; zoneMethod?: string },
+): Promise<{ hrMax: number; zones: HrZone[] }> {
+  const response = await fetch(`${API_BASE}/api/me/profile/preview-zones`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) {
+    throw new Error(await readErrorMessage(response, 'Could not preview zones.'))
+  }
+  return (await response.json()) as { hrMax: number; zones: HrZone[] }
 }
 
 export async function fetchActivities(token: string): Promise<Activity[]> {

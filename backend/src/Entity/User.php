@@ -32,9 +32,27 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
     #[ORM\Column]
     private string $password = '';
 
+    #[ORM\OneToOne(mappedBy: 'user', cascade: ['persist', 'remove'], orphanRemoval: true)]
+    private ?AthleteProfile $athleteProfile = null;
+
     public function getId(): ?int
     {
         return $this->id;
+    }
+
+    public function getAthleteProfile(): ?AthleteProfile
+    {
+        return $this->athleteProfile;
+    }
+
+    public function setAthleteProfile(?AthleteProfile $athleteProfile): static
+    {
+        $this->athleteProfile = $athleteProfile;
+        if ($athleteProfile instanceof AthleteProfile && $athleteProfile->getUser() !== $this) {
+            $athleteProfile->setUser($this);
+        }
+
+        return $this;
     }
 
     public function getEmail(): string

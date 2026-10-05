@@ -71,7 +71,12 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 		return fmt.Errorf("unmarshal structure: %w", err)
 	}
 
-	features := Build(metrics, structure)
+	athlete, err := apiClient.GetAthleteContext(ctx, ev.ActivityID)
+	if err != nil {
+		return amqp.MaybeRequeue(ctx, d, api.IsRetryable(err), fmt.Errorf("get athlete context: %w", err))
+	}
+
+	features := Build(metrics, structure, athlete)
 	features.StructureObjectKey = structureKey
 	features.FeaturesObjectKey = featuresKey
 

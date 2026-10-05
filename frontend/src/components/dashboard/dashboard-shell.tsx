@@ -10,6 +10,7 @@ const navItems = [
   { to: '/dashboard#calendar', label: 'Calendar', end: false },
   { to: '/dashboard#import', label: 'Import', end: false },
   { to: '/dashboard#plan', label: 'Plan', end: false },
+  { to: '/settings', label: 'Profile & zones', end: true },
 ]
 
 type DashboardShellProps = {

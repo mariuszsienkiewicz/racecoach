@@ -9,18 +9,27 @@ import (
 func TestClassifyActivityType(t *testing.T) {
 	t.Parallel()
 
+	z := func(n int) *int { return &n }
+
 	cases := []struct {
-		name  string
-		shape string
-		label string
-		dist  int
-		want  string
+		name     string
+		shape    string
+		label    string
+		dist     int
+		hasZones bool
+		dominant *int
+		active   int
+		recovery int
+		want     string
 	}{
-		{name: "intervals", shape: "intervals", label: "easy", dist: 8000, want: "intervals"},
+		{name: "structured intervals", shape: "intervals", label: "hard", dist: 8000, active: 4, recovery: 3, want: "intervals"},
+		{name: "false intervals shape ignored for z2", shape: "intervals", label: "easy", dist: 10000, hasZones: true, dominant: z(2), want: "long_run"},
 		{name: "near max", shape: "steady", label: "near_max", dist: 5000, want: "race"},
 		{name: "hard", shape: "steady", label: "hard", dist: 8000, want: "tempo"},
 		{name: "easy long", shape: "steady", label: "easy", dist: 18000, want: "long_run"},
 		{name: "easy short", shape: "steady", label: "easy", dist: 6000, want: "easy"},
+		{name: "z2 elevated still long", shape: "steady", label: "easy", dist: 10000, hasZones: true, dominant: z(2), want: "long_run"},
+		{name: "z4 tempo", shape: "steady", label: "hard", dist: 8000, hasZones: true, dominant: z(4), want: "tempo"},
 	}
 
 	for _, tc := range cases {
@@ -31,7 +40,15 @@ func TestClassifyActivityType(t *testing.T) {
 				Signals: domain.FeaturesSignals{
 					SuspectedWorkoutShape: tc.shape,
 					Effort:                &domain.EffortSignal{Label: tc.label},
+					HasAthleteZones:       tc.hasZones,
+					DominantHrZone:        tc.dominant,
 				},
+			}
+			if tc.active > 0 {
+				features.Signals.ByIntensity.Active = &domain.IntensityBucket{LapCount: tc.active}
+			}
+			if tc.recovery > 0 {
+				features.Signals.ByIntensity.Recovery = &domain.IntensityBucket{LapCount: tc.recovery}
 			}
 			if got := ClassifyActivityType(features); got != tc.want {
 				t.Fatalf("got %q want %q", got, tc.want)

@@ -3,7 +3,14 @@ import type { ReactNode } from 'react'
 
 import { useAuth } from '@/context/auth-context'
 
-export function ProtectedRoute({ children }: { children: ReactNode }) {
+export function ProtectedRoute({
+  children,
+  requireOnboarding = true,
+}: {
+  children: ReactNode
+  /** When true, incomplete profiles are sent to /onboarding. */
+  requireOnboarding?: boolean
+}) {
   const { user, loading } = useAuth()
   const location = useLocation()
 
@@ -17,6 +24,10 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />
+  }
+
+  if (requireOnboarding && !user.onboardingCompleted && location.pathname !== '/onboarding') {
+    return <Navigate to="/onboarding" replace state={{ from: location.pathname }} />
   }
 
   return children

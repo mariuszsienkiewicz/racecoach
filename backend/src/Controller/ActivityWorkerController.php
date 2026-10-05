@@ -205,6 +205,35 @@ final class ActivityWorkerController extends AbstractController
     }
 
     #[Route(
+        '/api/activities/{id}/athlete-context',
+        name: 'api_activities_athlete_context',
+        methods: ['GET'],
+        requirements: ['id' => '\d+'],
+    )]
+    public function athleteContext(int $id): JsonResponse
+    {
+        $activity = $this->findActivity($id);
+        if (!$activity instanceof Activity) {
+            return $this->json(['message' => 'Activity not found'], Response::HTTP_NOT_FOUND);
+        }
+
+        $profile = $activity->getUser()->getAthleteProfile();
+        if (null === $profile || !$profile->isOnboardingCompleted() || [] === $profile->getZones()) {
+            return $this->json([
+                'activityId' => (string) $activity->getId(),
+                'hasProfile' => false,
+                'athlete' => null,
+            ]);
+        }
+
+        return $this->json([
+            'activityId' => (string) $activity->getId(),
+            'hasProfile' => true,
+            'athlete' => $profile->toAthleteContextArray(),
+        ]);
+    }
+
+    #[Route(
         '/api/activities/{id}/pipeline-heartbeat',
         name: 'api_activities_pipeline_heartbeat',
         methods: ['PATCH'],

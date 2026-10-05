@@ -26,7 +26,7 @@ export function LoginPage() {
 
     try {
       await login(email, password)
-      navigate('/dashboard')
+      navigate('/dashboard') // ProtectedRoute sends incomplete profiles to /onboarding
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Sign-in failed. Please try again.')
     } finally {

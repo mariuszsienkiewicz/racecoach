@@ -79,7 +79,8 @@ func processDelivery(ctx context.Context, ch *amqpClient.Channel, storageClient 
 		return fmt.Errorf("marshal features: %w", err)
 	}
 	userPrompt := "Return ONLY one JSON object matching the schema from the system prompt. No prose before or after it.\n\n" +
-		"Prefer signals.display.effort, signals.intervalPattern, and signals.byIntensity.active for work quality.\n" +
+		"Prefer signals.display.effort, signals.display.dominantHrZone, signals.intervalPattern, and signals.byIntensity.active.\n" +
+		"Use signals.display.athleteZones only to interpret intensity - never paste the full zone table into athlete-facing text.\n" +
 		"Never treat recovery/warmup/cooldown pace as slowest work lap.\n\n" +
 		"Features JSON:\n" + string(featuresJSON)
 
